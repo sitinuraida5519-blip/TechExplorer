@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   runApp(const MyApp());
@@ -28,6 +30,7 @@ const Color backgroundColor = Color(0xFFF5F8FC);
 // ============================================================
 
 class MaterialData {
+  final String id;
   String title;
   String category;
   String description;
@@ -36,6 +39,7 @@ class MaterialData {
   IconData icon;
 
   MaterialData({
+    required this.id,
     required this.title,
     required this.category,
     required this.description,
@@ -43,6 +47,132 @@ class MaterialData {
     required this.importantPoints,
     required this.icon,
   });
+}
+
+class MaterialHistoryEntry {
+  final String materialId;
+  final String title;
+  final String category;
+  final DateTime lastOpened;
+
+  const MaterialHistoryEntry({
+    required this.materialId,
+    required this.title,
+    required this.category,
+    required this.lastOpened,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'materialId': materialId,
+        'title': title,
+        'category': category,
+        'lastOpened': lastOpened.toIso8601String(),
+      };
+
+  static MaterialHistoryEntry? fromJson(dynamic value) {
+    if (value is! Map) return null;
+    final materialId = value['materialId'];
+    final title = value['title'];
+    final category = value['category'];
+    final timestamp = value['lastOpened'];
+    if (materialId is! String ||
+        title is! String ||
+        category is! String ||
+        timestamp is! String) {
+      return null;
+    }
+    final lastOpened = DateTime.tryParse(timestamp);
+    if (lastOpened == null) return null;
+    return MaterialHistoryEntry(
+      materialId: materialId,
+      title: title,
+      category: category,
+      lastOpened: lastOpened,
+    );
+  }
+}
+
+class MaterialHistoryStore extends ChangeNotifier {
+  MaterialHistoryStore({required String userEmail})
+      : _storageKey =
+            'recent_materials_${userEmail.trim().toLowerCase()}';
+
+  final String _storageKey;
+  final List<MaterialHistoryEntry> _entries = [];
+  bool _isLoaded = false;
+  bool _storageFailed = false;
+
+  List<MaterialHistoryEntry> get entries =>
+      List.unmodifiable(_entries);
+  bool get isLoaded => _isLoaded;
+  bool get storageFailed => _storageFailed;
+
+  Future<void> load() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final rawValue = preferences.getString(_storageKey);
+      if (rawValue != null) {
+        final decoded = jsonDecode(rawValue);
+        if (decoded is List) {
+          final uniqueEntries = <String, MaterialHistoryEntry>{};
+          for (final value in decoded) {
+            final entry = MaterialHistoryEntry.fromJson(value);
+            if (entry != null && !uniqueEntries.containsKey(entry.materialId)) {
+              uniqueEntries[entry.materialId] = entry;
+            }
+          }
+          _entries
+            ..clear()
+            ..addAll(uniqueEntries.values);
+          _entries.sort((a, b) => b.lastOpened.compareTo(a.lastOpened));
+        }
+      }
+    } catch (_) {
+      _storageFailed = true;
+      _entries.clear();
+    }
+    _isLoaded = true;
+    notifyListeners();
+  }
+
+  Future<void> record(MaterialData material) async {
+    if (!_isLoaded) await load();
+    final entry = MaterialHistoryEntry(
+      materialId: material.id,
+      title: material.title,
+      category: material.category,
+      lastOpened: DateTime.now(),
+    );
+    _entries.removeWhere((item) => item.materialId == material.id);
+    _entries.insert(0, entry);
+    await _save();
+    notifyListeners();
+  }
+
+  Future<void> remove(String materialId) async {
+    _entries.removeWhere((entry) => entry.materialId == materialId);
+    await _save();
+    notifyListeners();
+  }
+
+  Future<void> clear() async {
+    _entries.clear();
+    await _save();
+    notifyListeners();
+  }
+
+  Future<void> _save() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final success = await preferences.setString(
+        _storageKey,
+        jsonEncode(_entries.map((entry) => entry.toJson()).toList()),
+      );
+      _storageFailed = !success;
+    } catch (_) {
+      _storageFailed = true;
+    }
+  }
 }
 
 // ============================================================
