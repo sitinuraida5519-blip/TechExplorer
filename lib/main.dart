@@ -1,9 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-void main() {
+final ThemeController appThemeController = ThemeController();
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await appThemeController.load();
   runApp(const MyApp());
 }
 
@@ -22,8 +27,99 @@ class MyApp extends StatelessWidget {
 
 const Color primaryColor = Color(0xFF1565C0);
 const Color darkBlue = Color(0xFF0D47A1);
-const Color lightBlue = Color(0xFFE3F2FD);
 const Color backgroundColor = Color(0xFFF5F8FC);
+
+class ThemeController extends ChangeNotifier {
+  static const String _preferenceKey = 'tech_explorer_theme';
+
+  ThemeMode _themeMode = ThemeMode.light;
+
+  ThemeMode get themeMode => _themeMode;
+  bool get isDarkMode => _themeMode == ThemeMode.dark;
+
+  Future<void> load() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      _themeMode = preferences.getString(_preferenceKey) == 'dark'
+          ? ThemeMode.dark
+          : ThemeMode.light;
+    } catch (_) {
+      _themeMode = ThemeMode.light;
+    }
+    notifyListeners();
+  }
+
+  Future<void> setDarkMode(bool isDark) async {
+    final nextMode = isDark ? ThemeMode.dark : ThemeMode.light;
+    if (_themeMode == nextMode) return;
+    _themeMode = nextMode;
+    notifyListeners();
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setString(_preferenceKey, isDark ? 'dark' : 'light');
+    } catch (_) {
+      // Keep the active theme usable even if preferences are unavailable.
+    }
+  }
+}
+
+ThemeData buildAppTheme(Brightness brightness) {
+  final isDark = brightness == Brightness.dark;
+  final colorScheme = ColorScheme.fromSeed(
+    seedColor: primaryColor,
+    brightness: brightness,
+  ).copyWith(surface: isDark ? const Color(0xFF1B2430) : Colors.white);
+  final background = isDark ? const Color(0xFF111820) : backgroundColor;
+
+  return ThemeData(
+    useMaterial3: true,
+    fontFamily: 'Poppins',
+    colorScheme: colorScheme,
+    scaffoldBackgroundColor: background,
+    appBarTheme: AppBarTheme(
+      backgroundColor: background,
+      foregroundColor: colorScheme.onSurface,
+      surfaceTintColor: Colors.transparent,
+    ),
+    cardTheme: CardThemeData(
+      color: isDark ? const Color(0xFF1B2430) : Colors.white,
+      surfaceTintColor: Colors.transparent,
+      elevation: isDark ? 1 : 0,
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: isDark ? const Color(0xFF25303C) : Colors.white,
+      hintStyle: TextStyle(color: colorScheme.onSurfaceVariant),
+      prefixIconColor: colorScheme.onSurfaceVariant,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide.none,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
+      ),
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: colorScheme.surface,
+      surfaceTintColor: Colors.transparent,
+    ),
+    bottomNavigationBarTheme: BottomNavigationBarThemeData(
+      backgroundColor: colorScheme.surface,
+      selectedItemColor: colorScheme.primary,
+      unselectedItemColor: colorScheme.onSurfaceVariant,
+    ),
+    dividerTheme: DividerThemeData(color: colorScheme.outlineVariant),
+    snackBarTheme: SnackBarThemeData(
+      backgroundColor: colorScheme.inverseSurface,
+      contentTextStyle: TextStyle(color: colorScheme.onInverseSurface),
+    ),
+  );
+}
 
 // ============================================================
 // MODEL MATERI
@@ -63,11 +159,11 @@ class MaterialHistoryEntry {
   });
 
   Map<String, dynamic> toJson() => {
-        'materialId': materialId,
-        'title': title,
-        'category': category,
-        'lastOpened': lastOpened.toIso8601String(),
-      };
+    'materialId': materialId,
+    'title': title,
+    'category': category,
+    'lastOpened': lastOpened.toIso8601String(),
+  };
 
   static MaterialHistoryEntry? fromJson(dynamic value) {
     if (value is! Map) return null;
@@ -94,20 +190,24 @@ class MaterialHistoryEntry {
 
 class MaterialHistoryStore extends ChangeNotifier {
   MaterialHistoryStore({required String userEmail})
-      : _storageKey =
-            'recent_materials_${userEmail.trim().toLowerCase()}';
+    : _storageKey = 'recent_materials_${userEmail.trim().toLowerCase()}';
 
   final String _storageKey;
   final List<MaterialHistoryEntry> _entries = [];
+  Future<void>? _loadOperation;
   bool _isLoaded = false;
   bool _storageFailed = false;
 
-  List<MaterialHistoryEntry> get entries =>
-      List.unmodifiable(_entries);
+  List<MaterialHistoryEntry> get entries => List.unmodifiable(_entries);
   bool get isLoaded => _isLoaded;
   bool get storageFailed => _storageFailed;
 
-  Future<void> load() async {
+  Future<void> load() {
+    if (_isLoaded) return Future<void>.value();
+    return _loadOperation ??= _load();
+  }
+
+  Future<void> _load() async {
     try {
       final preferences = await SharedPreferences.getInstance();
       final rawValue = preferences.getString(_storageKey);
@@ -150,12 +250,14 @@ class MaterialHistoryStore extends ChangeNotifier {
   }
 
   Future<void> remove(String materialId) async {
+    if (!_isLoaded) await load();
     _entries.removeWhere((entry) => entry.materialId == materialId);
     await _save();
     notifyListeners();
   }
 
   Future<void> clear() async {
+    if (!_isLoaded) await load();
     _entries.clear();
     await _save();
     notifyListeners();
@@ -197,10 +299,10 @@ class QuizQuestion {
 
 List<MaterialData> materials = [
   MaterialData(
+    id: 'computer-basics-introduction',
     title: 'Pengertian Komputer',
     category: 'Computer Basics',
-    description:
-        'Komputer adalah mesin elektronik yang menerima data, mengolahnya, dan menghasilkan informasi yang berguna bagi manusia.',
+    description: 'Komputer adalah mesin elektronik yang menerima data, mengolahnya, dan menghasilkan informasi yang berguna bagi manusia.',
     content:
         'Komputer adalah perangkat elektronik yang digunakan untuk menerima data, mengolahnya, menyimpannya, dan menghasilkan informasi. Proses kerja komputer secara umum terdiri dari input, process, output, dan storage.\n\n'
         'Pada tahap input, pengguna memasukkan data melalui keyboard, mouse, scanner, atau perangkat masukan lainnya. Data kemudian diproses oleh processor sesuai instruksi program. Hasil pengolahan ditampilkan pada monitor, speaker, atau dicetak melalui printer. Setelah itu, data dapat disimpan dalam media penyimpanan seperti HDD, SSD, atau flash drive.\n\n'
@@ -215,10 +317,10 @@ List<MaterialData> materials = [
   ),
 
   MaterialData(
+    id: 'computer-basics-system',
     title: 'Sistem Komputer',
     category: 'Computer Basics',
-    description:
-        'Sistem komputer terdiri dari perangkat keras, perangkat lunak, dan pengguna yang saling bekerja sama.',
+    description: 'Sistem komputer terdiri dari perangkat keras, perangkat lunak, dan pengguna yang saling bekerja sama.',
     content:
         'Sistem komputer merupakan gabungan dari perangkat keras (hardware), perangkat lunak (software), dan pengguna (brainware) yang bekerja bersama untuk menjalankan proses komputasi. Hardware adalah komponen fisik seperti monitor, keyboard, mouse, CPU, dan printer. Software adalah program yang mengendalikan kerja komputer, seperti sistem operasi, Microsoft Word, dan browser. Brainware adalah manusia yang menggunakan komputer untuk menjalankan tugas tertentu.\n\n'
         'Contoh sistem komputer dapat dilihat saat seseorang membuka aplikasi belajar, mengetik tugas, dan menyimpannya ke hard disk. Ketiga komponen ini saling bergantung: hardware menyediakan alat, software memberi perintah, dan brainware mengoperasikan sistem. Manfaat sistem komputer adalah memudahkan manusia dalam mengelola, memproses, dan menyimpan data dengan cepat dan akurat.',
@@ -232,10 +334,10 @@ List<MaterialData> materials = [
   ),
 
   MaterialData(
+    id: 'hardware-motherboard',
     title: 'Motherboard',
     category: 'Hardware',
-    description:
-        'Motherboard adalah papan utama yang menjadi pusat hubungan semua komponen komputer.',
+    description: 'Motherboard adalah papan utama yang menjadi pusat hubungan semua komponen komputer.',
     content:
         'Motherboard atau papan induk adalah komponen utama pada komputer yang menjadi tempat pemasangan processor, RAM, kartu grafis, kartu jaringan, media penyimpanan, dan perangkat lain. Motherboard berfungsi sebagai pusat penghubung dan koordinasi kerja semua komponen agar komputer dapat berjalan dengan baik.\n\n'
         'Pada motherboard terdapat socket processor, slot RAM, slot ekspansi, konektor daya, dan port USB. Semua komponen terhubung melalui jalur elektronik pada motherboard. Contoh perangkat yang terhubung adalah CPU, RAM, SSD, keyboard, mouse, dan monitor.\n\n'
@@ -250,10 +352,10 @@ List<MaterialData> materials = [
   ),
 
   MaterialData(
+    id: 'hardware-processor',
     title: 'Processor',
     category: 'Hardware',
-    description:
-        'Processor adalah otak komputer yang menjalankan instruksi dan mengolah data.',
+    description: 'Processor adalah otak komputer yang menjalankan instruksi dan mengolah data.',
     content:
         'Processor atau CPU (Central Processing Unit) adalah komponen yang bertanggung jawab untuk menjalankan instruksi dan mengolah data. Processor membaca program, memproses perintah, dan menghasilkan hasil yang dibutuhkan pengguna. Dalam setiap komputer, processor menjadi pusat operasi utama.\n\n'
         'Processor memiliki kecepatan yang diukur dalam GHz dan biasanya dilengkapi beberapa core. Semakin tinggi kecepatan dan jumlah core, semakin cepat komputer dapat menjalankan aplikasi. Contoh penerapannya adalah saat membuka browser, memutar video, atau menjalankan game.\n\n'
@@ -268,10 +370,10 @@ List<MaterialData> materials = [
   ),
 
   MaterialData(
+    id: 'hardware-ram',
     title: 'RAM',
     category: 'Hardware',
-    description:
-        'RAM adalah memori sementara yang dipakai saat komputer aktif untuk menjalankan program dan data yang sedang dibuka.',
+    description: 'RAM adalah memori sementara yang dipakai saat komputer aktif untuk menjalankan program dan data yang sedang dibuka.',
     content:
         'RAM atau Random Access Memory adalah memori yang digunakan untuk menyimpan data dan instruksi sementara ketika komputer sedang aktif. Data di RAM dapat diakses dengan cepat oleh processor saat program sedang berjalan. RAM berfungsi sebagai ruang kerja sementara bagi komputer.\n\n'
         'Saat seseorang membuka browser, Microsoft Word, dan aplikasi musik sekaligus, semua data aktif akan disimpan sementara di RAM. Semakin besar kapasitas RAM, semakin banyak aplikasi yang dapat dijalankan tanpa terasa lambat. Namun, RAM bersifat sementara, sehingga data di dalamnya akan hilang saat komputer dimatikan atau di-restart.\n\n'
@@ -286,10 +388,10 @@ List<MaterialData> materials = [
   ),
 
   MaterialData(
+    id: 'hardware-storage-hdd-ssd',
     title: 'Hard Disk dan SSD',
     category: 'Hardware',
-    description:
-        'Hard disk dan SSD adalah media penyimpanan utama yang digunakan untuk menyimpan data, aplikasi, dan sistem operasi.',
+    description: 'Hard disk dan SSD adalah media penyimpanan utama yang digunakan untuk menyimpan data, aplikasi, dan sistem operasi.',
     content:
         'Hard Disk Drive (HDD) dan Solid State Drive (SSD) adalah perangkat penyimpanan data yang berfungsi menyimpan sistem operasi, aplikasi, file, foto, video, dan dokumen. HDD menggunakan piringan magnetik, sedangkan SSD menggunakan chip flash memory. Kedua perangkat ini memiliki fungsi yang sama, yaitu menyimpan data dalam jangka waktu lama.\n\n'
         'Contohnya, sistem operasi Windows atau Linux biasanya berada dalam SSD atau HDD, sedangkan file tugas sekolah, foto keluarga, dan permainan digital juga tersimpan di sana. SSD umumnya lebih cepat, lebih ringan, dan lebih tahan guncangan dibanding HDD.\n\n'
@@ -304,10 +406,10 @@ List<MaterialData> materials = [
   ),
 
   MaterialData(
+    id: 'software-operating-system',
     title: 'Sistem Operasi',
     category: 'Software',
-    description:
-        'Sistem operasi adalah perangkat lunak yang mengelola sumber daya komputer dan menjadi penghubung antara pengguna dan hardware.',
+    description: 'Sistem operasi adalah perangkat lunak yang mengelola sumber daya komputer dan menjadi penghubung antara pengguna dan hardware.',
     content:
         'Sistem operasi (Operating System) adalah perangkat lunak yang mengelola sumber daya komputer dan bekerja sebagai penghubung antara pengguna, aplikasi, dan perangkat keras. Fungsi utamanya adalah mengatur penggunaan CPU, RAM, penyimpanan, perangkat input-output, serta menjalankan program.\n\n'
         'Contoh sistem operasi adalah Windows, Linux, dan macOS. Saat pengguna membuka aplikasi seperti browser atau Microsoft Word, sistem operasi mengatur bagaimana aplikasi tersebut berjalan dan menggunakan sumber daya komputer. Sistem operasi juga mengelola file, folder, dan memory, serta menjaga agar komputer bisa berjalan dengan tertib.\n\n'
@@ -322,10 +424,10 @@ List<MaterialData> materials = [
   ),
 
   MaterialData(
+    id: 'software-driver',
     title: 'Driver',
     category: 'Software',
-    description:
-        'Driver adalah perangkat lunak yang memungkinkan sistem operasi berkomunikasi dengan perangkat keras tertentu.',
+    description: 'Driver adalah perangkat lunak yang memungkinkan sistem operasi berkomunikasi dengan perangkat keras tertentu.',
     content:
         'Driver adalah program khusus yang memungkinkan sistem operasi mengenali dan mengendalikan perangkat keras tertentu. Tanpa driver, perangkat seperti printer, kartu grafis, Wi-Fi, dan scanner tidak dapat berfungsi dengan baik. Driver berperan sebagai penerjemah antara hardware dan software.\n\n'
         'Contoh driver adalah driver printer untuk kegiatan cetak, driver kartu grafis untuk menampilkan gambar di monitor, dan driver jaringan untuk menghubungkan komputer ke internet. Jika driver tidak sesuai atau rusak, perangkat mungkin tidak terdeteksi atau tampil error.\n\n'
@@ -340,10 +442,10 @@ List<MaterialData> materials = [
   ),
 
   MaterialData(
+    id: 'networking-fundamentals',
     title: 'Jaringan Komputer',
     category: 'Networking',
-    description:
-        'Jaringan komputer adalah hubungan antara beberapa perangkat yang memungkinkan komunikasi dan berbagi sumber daya.',
+    description: 'Jaringan komputer adalah hubungan antara beberapa perangkat yang memungkinkan komunikasi dan berbagi sumber daya.',
     content:
         'Jaringan komputer adalah kumpulan perangkat yang saling terhubung agar dapat bertukar data dan berbagi sumber daya. Perangkat yang terhubung bisa berupa komputer, laptop, printer, server, dan smartphone. Jaringan dapat dibuat dengan kabel maupun tanpa kabel.\n\n'
         'Contoh jaringan komputer adalah Wi-Fi di rumah, jaringan komputer di sekolah, dan internet yang menghubungkan seluruh dunia. Dalam jaringan, data dikirim dalam bentuk paket dan diterima oleh perangkat tujuan.\n\n'
@@ -358,10 +460,10 @@ List<MaterialData> materials = [
   ),
 
   MaterialData(
+    id: 'networking-lan-man-wan',
     title: 'LAN, MAN, dan WAN',
     category: 'Networking',
-    description:
-        'Jenis jaringan dibedakan berdasarkan jangkauan wilayahnya: LAN, MAN, dan WAN.',
+    description: 'Jenis jaringan dibedakan berdasarkan jangkauan wilayahnya: LAN, MAN, dan WAN.',
     content:
         'LAN (Local Area Network) adalah jaringan yang mencakup wilayah kecil seperti rumah, kantor, atau laboratorium komputer. Jaringan ini biasanya menghubungkan beberapa komputer yang berdekatan.\n\n'
         'MAN (Metropolitan Area Network) memiliki cakupan yang lebih luas, biasanya mencakup kota atau kampus besar. WAN (Wide Area Network) adalah jaringan dengan cakupan yang sangat luas, bahkan bisa menghubungkan antar negara. Contoh WAN adalah internet.\n\n'
@@ -376,10 +478,10 @@ List<MaterialData> materials = [
   ),
 
   MaterialData(
+    id: 'networking-ip-address',
     title: 'IP Address',
     category: 'Networking',
-    description:
-        'IP Address adalah alamat unik yang digunakan untuk mengidentifikasi perangkat dalam jaringan.',
+    description: 'IP Address adalah alamat unik yang digunakan untuk mengidentifikasi perangkat dalam jaringan.',
     content:
         'IP Address atau alamat IP adalah identitas numerik yang diberikan kepada perangkat agar dapat dikenal dalam jaringan. Setiap komputer, smartphone, router, atau server mempunyai IP untuk memastikan data dikirim ke perangkat yang benar.\n\n'
         'Pada IPv4, alamat IP ditulis dalam empat blok angka desimal seperti 192.168.1.10. IP Address dapat diberikan secara manual atau otomatis menggunakan DHCP. Selain IP, jaringan juga memerlukan subnet mask, gateway, dan DNS agar komunikasi berjalan dengan baik.\n\n'
@@ -394,10 +496,10 @@ List<MaterialData> materials = [
   ),
 
   MaterialData(
+    id: 'networking-topologies',
     title: 'Topologi Jaringan',
     category: 'Networking',
-    description:
-        'Topologi jaringan menggambarkan bentuk hubungan antarperangkat dalam suatu jaringan.',
+    description: 'Topologi jaringan menggambarkan bentuk hubungan antarperangkat dalam suatu jaringan.',
     content:
         'Topologi jaringan adalah pola atau bentuk hubungan antarperangkat dalam sebuah jaringan komputer. Topologi menjelaskan bagaimana komputer, switch, router, dan perangkat lain terhubung satu sama lain.\n\n'
         'Beberapa topologi yang umum adalah bus, star, ring, mesh, dan tree. Topologi star sering digunakan di sekolah dan kantor karena semua perangkat terhubung ke satu titik pusat seperti switch. Topologi bus menggunakan jalur utama, sedangkan mesh memiliki banyak jalur koneksi antar perangkat.\n\n'
@@ -412,10 +514,10 @@ List<MaterialData> materials = [
   ),
 
   MaterialData(
+    id: 'network-device-router',
     title: 'Router',
     category: 'Network Devices',
-    description:
-        'Router adalah perangkat yang menghubungkan jaringan yang berbeda dan meneruskan data ke tujuan yang tepat.',
+    description: 'Router adalah perangkat yang menghubungkan jaringan yang berbeda dan meneruskan data ke tujuan yang tepat.',
     content:
         'Router adalah perangkat jaringan yang berfungsi menghubungkan beberapa jaringan menjadi satu sistem. Router bekerja dengan meneruskan paket data berdasarkan alamat tujuan agar data sampai ke jaringan yang benar.\n\n'
         'Router sering digunakan untuk menghubungkan jaringan lokal dengan internet. Dalam rumah atau sekolah, router memungkinkan komputer, laptop, dan smartphone terhubung ke internet dan berbagi koneksi. Router juga dapat memilih jalur terbaik agar data dikirim dengan cepat dan efisien.\n\n'
@@ -430,10 +532,10 @@ List<MaterialData> materials = [
   ),
 
   MaterialData(
+    id: 'network-device-switch',
     title: 'Switch',
     category: 'Network Devices',
-    description:
-        'Switch adalah perangkat jaringan yang menghubungkan banyak perangkat dalam satu jaringan lokal secara lebih efisien.',
+    description: 'Switch adalah perangkat jaringan yang menghubungkan banyak perangkat dalam satu jaringan lokal secara lebih efisien.',
     content:
         'Switch adalah perangkat jaringan yang berfungsi menghubungkan beberapa perangkat dalam satu jaringan lokal, seperti komputer, printer, server, dan laptop. Switch bekerja dengan meneruskan data berdasarkan alamat MAC, sehingga pengiriman data lebih cepat dan lebih tepat sasaran.\n\n'
         'Dalam jaringan LAN, switch sangat penting karena memungkinkan perangkat untuk bertukar informasi dengan lancar dalam area yang sama. Switch biasanya memiliki beberapa port sehingga banyak perangkat dapat terhubung sekaligus.\n\n'
@@ -448,10 +550,10 @@ List<MaterialData> materials = [
   ),
 
   MaterialData(
+    id: 'network-device-access-point',
     title: 'Access Point',
     category: 'Network Devices',
-    description:
-        'Access Point adalah perangkat yang menyediakan koneksi nirkabel agar perangkat dapat terhubung ke jaringan Wi-Fi.',
+    description: 'Access Point adalah perangkat yang menyediakan koneksi nirkabel agar perangkat dapat terhubung ke jaringan Wi-Fi.',
     content:
         'Access Point (AP) adalah perangkat jaringan yang menyediakan akses nirkabel menggunakan teknologi Wi-Fi. AP biasanya terhubung ke router atau switch melalui kabel, lalu menyebarkan sinyal Wi-Fi ke perangkat seperti laptop, smartphone, dan tablet.\n\n'
         'Contoh penggunaannya dapat ditemukan di sekolah, kantor, cafe, rumah, dan area publik. Banyak perangkat dapat terhubung ke jaringan tanpa perlu kabel. AP membantu mobilitas pengguna karena mereka bisa bergerak di area jangkauan Wi-Fi sambil tetap terhubung ke jaringan.\n\n'
@@ -466,10 +568,10 @@ List<MaterialData> materials = [
   ),
 
   MaterialData(
+    id: 'troubleshooting-network',
     title: 'Troubleshooting Jaringan',
     category: 'Troubleshooting',
-    description:
-        'Troubleshooting jaringan adalah proses mencari dan memperbaiki gangguan agar jaringan kembali berfungsi normal.',
+    description: 'Troubleshooting jaringan adalah proses mencari dan memperbaiki gangguan agar jaringan kembali berfungsi normal.',
     content:
         'Troubleshooting jaringan merupakan langkah sistematis untuk menemukan penyebab gangguan pada jaringan komputer lalu memperbaikinya. Gangguan bisa terjadi karena kabel putus, IP tidak sesuai, router rusak, atau sinyal Wi-Fi lemah. Proses ini penting agar jaringan dapat kembali berfungsi seperti semula.\n\n'
         'Langkah umum troubleshooting adalah memeriksa kabel dan port, mengecek status perangkat, menguji koneksi menggunakan ping, memeriksa konfigurasi IP Address, gateway, dan DNS, serta melihat apakah router atau switch berfungsi dengan baik. Contohnya, saat internet tidak bisa diakses, teknisi akan mengecek apakah modem atau router hidup, apakah kabel LAN terhubung, dan apakah perangkat menerima IP yang benar.\n\n'
@@ -492,12 +594,7 @@ List<QuizQuestion> quizQuestions = [
   QuizQuestion(
     question:
         'Komponen yang berfungsi sebagai pusat pemrosesan komputer adalah?',
-    options: [
-      'RAM',
-      'Processor',
-      'Keyboard',
-      'Monitor',
-    ],
+    options: ['RAM', 'Processor', 'Keyboard', 'Monitor'],
     correctAnswer: 1,
   ),
 
@@ -513,14 +610,8 @@ List<QuizQuestion> quizQuestions = [
   ),
 
   QuizQuestion(
-    question:
-        'Perangkat yang digunakan untuk menghubungkan jaringan yang berbeda adalah?',
-    options: [
-      'Keyboard',
-      'Monitor',
-      'Router',
-      'Mouse',
-    ],
+    question: 'Perangkat yang digunakan untuk menghubungkan jaringan yang berbeda adalah?',
+    options: ['Keyboard', 'Monitor', 'Router', 'Mouse'],
     correctAnswer: 2,
   ),
 
@@ -537,24 +628,13 @@ List<QuizQuestion> quizQuestions = [
 
   QuizQuestion(
     question: 'Sistem operasi termasuk ke dalam jenis?',
-    options: [
-      'Hardware',
-      'Software',
-      'Brainware',
-      'Network Device',
-    ],
+    options: ['Hardware', 'Software', 'Brainware', 'Network Device'],
     correctAnswer: 1,
   ),
 
   QuizQuestion(
-    question:
-        'Perangkat yang banyak digunakan untuk menghubungkan komputer dalam LAN adalah?',
-    options: [
-      'Switch',
-      'Monitor',
-      'Printer',
-      'Keyboard',
-    ],
+    question: 'Perangkat yang banyak digunakan untuk menghubungkan komputer dalam LAN adalah?',
+    options: ['Switch', 'Monitor', 'Printer', 'Keyboard'],
     correctAnswer: 0,
   ),
 
@@ -571,35 +651,20 @@ List<QuizQuestion> quizQuestions = [
 
   QuizQuestion(
     question: 'Perangkat yang menyediakan koneksi Wi-Fi disebut?',
-    options: [
-      'RAM',
-      'Access Point',
-      'Processor',
-      'Hard Disk',
-    ],
+    options: ['RAM', 'Access Point', 'Processor', 'Hard Disk'],
     correctAnswer: 1,
   ),
 
   QuizQuestion(
     question: 'Contoh media penyimpanan adalah?',
-    options: [
-      'SSD',
-      'Keyboard',
-      'Monitor',
-      'Mouse',
-    ],
+    options: ['SSD', 'Keyboard', 'Monitor', 'Mouse'],
     correctAnswer: 0,
   ),
 
   QuizQuestion(
     question:
         'Perintah yang umum digunakan untuk menguji koneksi jaringan adalah?',
-    options: [
-      'copy',
-      'ping',
-      'delete',
-      'format',
-    ],
+    options: ['copy', 'ping', 'delete', 'format'],
     correctAnswer: 1,
   ),
 ];
@@ -632,18 +697,36 @@ class TechExplorerApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'TechExplorer',
-      theme: ThemeData(
-        useMaterial3: true,
-        fontFamily: 'Poppins',
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: primaryColor,
-        ),
-        scaffoldBackgroundColor: backgroundColor,
+    return AnimatedBuilder(
+      animation: appThemeController,
+      builder: (context, _) => MaterialApp(
+        debugShowCheckedModeBanner: false,
+        title: 'TechExplorer',
+        theme: buildAppTheme(Brightness.light),
+        darkTheme: buildAppTheme(Brightness.dark),
+        themeMode: appThemeController.themeMode,
+        home: const SplashScreen(),
       ),
-      home: const SplashScreen(),
+    );
+  }
+}
+
+class ThemeModeTile extends StatelessWidget {
+  const ThemeModeTile({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = appThemeController.isDarkMode;
+    final colorScheme = Theme.of(context).colorScheme;
+    return SwitchListTile(
+      secondary: Icon(
+        isDark ? Icons.dark_mode_outlined : Icons.light_mode_outlined,
+        color: colorScheme.primary,
+      ),
+      title: const Text('Mode Terang / Mode Gelap'),
+      subtitle: Text('Aktif: ${isDark ? 'Mode Gelap' : 'Mode Terang'}'),
+      value: isDark,
+      onChanged: appThemeController.setDarkMode,
     );
   }
 }
@@ -664,19 +747,14 @@ class _SplashScreenState extends State<SplashScreen> {
   void initState() {
     super.initState();
 
-    Timer(
-      const Duration(seconds: 2),
-      () {
-        if (!mounted) return;
+    Timer(const Duration(seconds: 2), () {
+      if (!mounted) return;
 
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => const LoginPage(),
-          ),
-        );
-      },
-    );
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginPage()),
+      );
+    });
   }
 
   @override
@@ -694,11 +772,7 @@ class _SplashScreenState extends State<SplashScreen> {
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(25),
               ),
-              child: const Icon(
-                Icons.computer,
-                size: 60,
-                color: primaryColor,
-              ),
+              child: const Icon(Icons.computer, size: 60, color: primaryColor),
             ),
 
             const SizedBox(height: 25),
@@ -717,17 +791,12 @@ class _SplashScreenState extends State<SplashScreen> {
             const Text(
               'Belajar Teknik Komputer dan Jaringan',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white70,
-                fontSize: 14,
-              ),
+              style: TextStyle(color: Colors.white70, fontSize: 14),
             ),
 
             const SizedBox(height: 35),
 
-            const CircularProgressIndicator(
-              color: Colors.white,
-            ),
+            const CircularProgressIndicator(color: Colors.white),
           ],
         ),
       ),
@@ -761,22 +830,17 @@ class _LoginPageState extends State<LoginPage> {
       return;
     }
 
-    if (email == 'admin@gmail.com' &&
-        password == 'admin123') {
+    if (email == 'admin@gmail.com' && password == 'admin123') {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(
-          builder: (_) => const AdminDashboard(),
-        ),
+        MaterialPageRoute(builder: (_) => const AdminDashboard()),
       );
 
       return;
     }
 
     final user = users.where(
-      (user) =>
-          user['email'] == email &&
-          user['password'] == password,
+      (user) => user['email'] == email && user['password'] == password,
     );
 
     if (user.isNotEmpty) {
@@ -795,11 +859,8 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   void showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-      ),
-    );
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -823,36 +884,33 @@ class _LoginPageState extends State<LoginPage> {
                 width: 85,
                 height: 85,
                 decoration: BoxDecoration(
-                  color: lightBlue,
+                  color: Theme.of(context).colorScheme.primaryContainer,
                   borderRadius: BorderRadius.circular(22),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.computer,
                   size: 48,
-                  color: primaryColor,
+                  color: Theme.of(context).colorScheme.primary,
                 ),
               ),
 
               const SizedBox(height: 25),
 
-              const Text(
+              Text(
                 'Selamat Datang',
                 style: TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF172B4D),
+                  color: Theme.of(context).colorScheme.onSurface,
                 ),
               ),
-            
 
               const SizedBox(height: 8),
 
               const Text(
                 'Masuk untuk mulai belajar bersama TechExplorer.',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.grey,
-                ),
+                style: TextStyle(color: Colors.grey),
               ),
 
               const SizedBox(height: 40),
@@ -860,10 +918,7 @@ class _LoginPageState extends State<LoginPage> {
               TextField(
                 controller: emailController,
                 keyboardType: TextInputType.emailAddress,
-                decoration: inputDecoration(
-                  'Email',
-                  Icons.email_outlined,
-                ),
+                decoration: inputDecoration('Email', Icons.email_outlined),
               ),
 
               const SizedBox(height: 18),
@@ -871,24 +926,21 @@ class _LoginPageState extends State<LoginPage> {
               TextField(
                 controller: passwordController,
                 obscureText: obscurePassword,
-                decoration: inputDecoration(
-                  'Password',
-                  Icons.lock_outline,
-                ).copyWith(
-                  suffixIcon: IconButton(
-                    onPressed: () {
-                      setState(() {
-                        obscurePassword =
-                            !obscurePassword;
-                      });
-                    },
-                    icon: Icon(
-                      obscurePassword
-                          ? Icons.visibility_off
-                          : Icons.visibility,
+                decoration: inputDecoration('Password', Icons.lock_outline)
+                    .copyWith(
+                      suffixIcon: IconButton(
+                        onPressed: () {
+                          setState(() {
+                            obscurePassword = !obscurePassword;
+                          });
+                        },
+                        icon: Icon(
+                          obscurePassword
+                              ? Icons.visibility_off
+                              : Icons.visibility,
+                        ),
+                      ),
                     ),
-                  ),
-                ),
               ),
 
               const SizedBox(height: 28),
@@ -902,16 +954,12 @@ class _LoginPageState extends State<LoginPage> {
                     backgroundColor: primaryColor,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(14),
                     ),
                   ),
                   child: const Text(
                     'Login',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),
               ),
@@ -919,20 +967,14 @@ class _LoginPageState extends State<LoginPage> {
               const SizedBox(height: 15),
 
               Row(
-                mainAxisAlignment:
-                    MainAxisAlignment.center,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Text(
-                    'Belum memiliki akun?',
-                  ),
+                  const Text('Belum memiliki akun?'),
                   TextButton(
                     onPressed: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              const RegisterPage(),
-                        ),
+                        MaterialPageRoute(builder: (_) => const RegisterPage()),
                       );
                     },
                     child: const Text('Registrasi'),
@@ -942,29 +984,26 @@ class _LoginPageState extends State<LoginPage> {
 
               const SizedBox(height: 20),
 
+              const Card(child: ThemeModeTile()),
+
+              const SizedBox(height: 12),
+
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(15),
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius:
-                      BorderRadius.circular(15),
+                  color: Theme.of(context).colorScheme.surface,
+                  borderRadius: BorderRadius.circular(15),
                 ),
                 child: const Column(
                   children: [
                     Text(
                       'Akun Demo',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: TextStyle(fontWeight: FontWeight.bold),
                     ),
                     SizedBox(height: 8),
-                    Text(
-                      'Siswa: siswa@gmail.com / 123456',
-                    ),
-                    Text(
-                      'Admin: admin@gmail.com / admin123',
-                    ),
+                    Text('Siswa: siswa@gmail.com / 123456'),
+                    Text('Admin: admin@gmail.com / admin123'),
                   ],
                 ),
               ),
@@ -984,12 +1023,10 @@ class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
 
   @override
-  State<RegisterPage> createState() =>
-      _RegisterPageState();
+  State<RegisterPage> createState() => _RegisterPageState();
 }
 
-class _RegisterPageState
-    extends State<RegisterPage> {
+class _RegisterPageState extends State<RegisterPage> {
   final nameController = TextEditingController();
   final emailController = TextEditingController();
   final classController = TextEditingController();
@@ -1009,9 +1046,7 @@ class _RegisterPageState
       return;
     }
 
-    final emailExists = users.any(
-      (user) => user['email'] == email,
-    );
+    final emailExists = users.any((user) => user['email'] == email);
 
     if (emailExists) {
       showMessage('Email sudah terdaftar.');
@@ -1046,11 +1081,8 @@ class _RegisterPageState
   }
 
   void showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-      ),
-    );
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -1065,41 +1097,29 @@ class _RegisterPageState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Registrasi'),
-      ),
+      appBar: AppBar(title: const Text('Registrasi')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(25),
         child: Column(
           children: [
             TextField(
               controller: nameController,
-              decoration: inputDecoration(
-                'Nama Lengkap',
-                Icons.person_outline,
-              ),
+              decoration: inputDecoration('Nama Lengkap', Icons.person_outline),
             ),
 
             const SizedBox(height: 15),
 
             TextField(
               controller: emailController,
-              keyboardType:
-                  TextInputType.emailAddress,
-              decoration: inputDecoration(
-                'Email',
-                Icons.email_outlined,
-              ),
+              keyboardType: TextInputType.emailAddress,
+              decoration: inputDecoration('Email', Icons.email_outlined),
             ),
 
             const SizedBox(height: 15),
 
             TextField(
               controller: classController,
-              decoration: inputDecoration(
-                'Kelas',
-                Icons.school_outlined,
-              ),
+              decoration: inputDecoration('Kelas', Icons.school_outlined),
             ),
 
             const SizedBox(height: 15),
@@ -1107,10 +1127,7 @@ class _RegisterPageState
             TextField(
               controller: passwordController,
               obscureText: true,
-              decoration: inputDecoration(
-                'Password',
-                Icons.lock_outline,
-              ),
+              decoration: inputDecoration('Password', Icons.lock_outline),
             ),
 
             const SizedBox(height: 25),
@@ -1138,11 +1155,7 @@ class HomePage extends StatefulWidget {
   final String userName;
   final String userEmail;
 
-  const HomePage({
-    super.key,
-    required this.userName,
-    required this.userEmail,
-  });
+  const HomePage({super.key, required this.userName, required this.userEmail});
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -1150,10 +1163,24 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   int currentIndex = 0;
+  late final MaterialHistoryStore _historyStore;
 
   Set<String> bookmarks = {};
 
   int completedMaterials = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _historyStore = MaterialHistoryStore(userEmail: widget.userEmail);
+    _historyStore.load();
+  }
+
+  @override
+  void dispose() {
+    _historyStore.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1161,13 +1188,9 @@ class _HomePageState extends State<HomePage> {
       buildHome(),
       LearnPage(
         bookmarks: bookmarks,
+        historyStore: _historyStore,
         onBookmarkChanged: () {
           setState(() {});
-        },
-        onMaterialOpened: () {
-          setState(() {
-            completedMaterials++;
-          });
         },
       ),
       QuizPage(
@@ -1177,6 +1200,7 @@ class _HomePageState extends State<HomePage> {
       ),
       BookmarkPage(
         bookmarks: bookmarks,
+        historyStore: _historyStore,
         onBookmarkChanged: () {
           setState(() {});
         },
@@ -1190,12 +1214,11 @@ class _HomePageState extends State<HomePage> {
 
     return Scaffold(
       body: pages[currentIndex],
-      bottomNavigationBar:
-          BottomNavigationBar(
+      bottomNavigationBar: BottomNavigationBar(
         currentIndex: currentIndex,
         type: BottomNavigationBarType.fixed,
-        selectedItemColor: primaryColor,
-        unselectedItemColor: Colors.grey,
+        selectedItemColor: Theme.of(context).colorScheme.primary,
+        unselectedItemColor: Theme.of(context).colorScheme.onSurfaceVariant,
         onTap: (index) {
           setState(() {
             currentIndex = index;
@@ -1233,28 +1256,24 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget buildHome() {
-    final progress =
-        materials.isEmpty
-            ? 0.0
-            : (completedMaterials /
-                    materials.length)
-                .clamp(0.0, 1.0);
+    final progress = materials.isEmpty
+        ? 0.0
+        : (completedMaterials / materials.length).clamp(0.0, 1.0);
 
     return SafeArea(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 15),
 
             Text(
               'Halo, ${widget.userName}',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 25,
                 fontWeight: FontWeight.bold,
-                color: Color(0xFF172B4D),
+                color: Theme.of(context).colorScheme.onSurface,
               ),
             ),
 
@@ -1262,9 +1281,7 @@ class _HomePageState extends State<HomePage> {
 
             const Text(
               'Siap melanjutkan pembelajaran hari ini?',
-              style: TextStyle(
-                color: Colors.grey,
-              ),
+              style: TextStyle(color: Colors.grey),
             ),
 
             const SizedBox(height: 25),
@@ -1275,15 +1292,17 @@ class _HomePageState extends State<HomePage> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) =>
-                        const SearchPage(),
+                    builder: (_) => SearchPage(
+                      bookmarks: bookmarks,
+                      historyStore: _historyStore,
+                      onBookmarkChanged: () {
+                        setState(() {});
+                      },
+                    ),
                   ),
                 );
               },
-              decoration: inputDecoration(
-                'Cari materi...',
-                Icons.search,
-              ),
+              decoration: inputDecoration('Cari materi...', Icons.search),
             ),
 
             const SizedBox(height: 25),
@@ -1293,18 +1312,14 @@ class _HomePageState extends State<HomePage> {
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 color: primaryColor,
-                borderRadius:
-                    BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(20),
               ),
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
                     'Progress Belajar',
-                    style: TextStyle(
-                      color: Colors.white70,
-                    ),
+                    style: TextStyle(color: Colors.white70),
                   ),
 
                   const SizedBox(height: 8),
@@ -1321,16 +1336,12 @@ class _HomePageState extends State<HomePage> {
                   const SizedBox(height: 10),
 
                   ClipRRect(
-                    borderRadius:
-                        BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(10),
                     child: LinearProgressIndicator(
                       value: progress,
                       minHeight: 8,
-                      backgroundColor:
-                          Colors.white30,
-                      valueColor:
-                          const AlwaysStoppedAnimation<
-                              Color>(
+                      backgroundColor: Colors.white30,
+                      valueColor: const AlwaysStoppedAnimation<Color>(
                         Colors.white,
                       ),
                     ),
@@ -1343,43 +1354,34 @@ class _HomePageState extends State<HomePage> {
 
             const Text(
               'Kategori Materi',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
 
             const SizedBox(height: 15),
 
             GridView.builder(
               shrinkWrap: true,
-              physics:
-                  const NeverScrollableScrollPhysics(),
+              physics: const NeverScrollableScrollPhysics(),
               itemCount: categoryData.length,
-              gridDelegate:
-                  const SliverGridDelegateWithFixedCrossAxisCount(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 2,
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
                 childAspectRatio: 1.3,
               ),
               itemBuilder: (_, index) {
-                final category =
-                    categoryData[index];
+                final category = categoryData[index];
 
                 return InkWell(
-                  borderRadius:
-                      BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(18),
                   onTap: () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) =>
-                            CategoryPage(
-                          category:
-                              category['name']
-                                  as String,
+                        builder: (_) => CategoryPage(
+                          category: category['name'] as String,
                           bookmarks: bookmarks,
+                          historyStore: _historyStore,
                           onBookmarkChanged: () {
                             setState(() {});
                           },
@@ -1389,31 +1391,22 @@ class _HomePageState extends State<HomePage> {
                   },
                   child: Container(
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius:
-                          BorderRadius.circular(18),
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: BorderRadius.circular(18),
                     ),
                     child: Column(
-                      mainAxisAlignment:
-                          MainAxisAlignment.center,
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(
-                          category['icon']
-                              as IconData,
+                          category['icon'] as IconData,
                           size: 38,
-                          color: primaryColor,
+                          color: Theme.of(context).colorScheme.primary,
                         ),
                         const SizedBox(height: 10),
                         Text(
-                          category['name']
-                              as String,
-                          textAlign:
-                              TextAlign.center,
-                          style:
-                              const TextStyle(
-                            fontWeight:
-                                FontWeight.w600,
-                          ),
+                          category['name'] as String,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
                         ),
                       ],
                     ),
@@ -1426,55 +1419,138 @@ class _HomePageState extends State<HomePage> {
 
             const Text(
               'Materi Terbaru',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
 
             const SizedBox(height: 12),
 
-            ...materials.take(3).map(
-              (material) {
-                return Card(
-                  margin:
-                      const EdgeInsets.only(
-                    bottom: 10,
+            ...materials.take(3).map((material) {
+              return Card(
+                margin: const EdgeInsets.only(bottom: 10),
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: Theme.of(context)
+                        .colorScheme
+                        .primaryContainer,
+                    child: Icon(
+                      material.icon,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
                   ),
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor:
-                          lightBlue,
-                      child: Icon(
-                        material.icon,
-                        color: primaryColor,
+                  title: Text(material.title),
+                  subtitle: Text(material.category),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => MaterialDetailPage(
+                          material: material,
+                          bookmarks: bookmarks,
+                          historyStore: _historyStore,
+                          onBookmarkChanged: () {
+                            setState(() {});
+                          },
+                        ),
                       ),
-                    ),
-                    title: Text(
-                      material.title,
-                    ),
-                    subtitle: Text(
-                      material.category,
-                    ),
-                    trailing: const Icon(
-                      Icons.chevron_right,
-                    ),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              MaterialDetailPage(
-                            material: material,
-                            bookmarks: bookmarks,
-                            onBookmarkChanged: () {
-                              setState(() {});
-                            },
+                    );
+                  },
+                ),
+              );
+            }),
+
+            const SizedBox(height: 20),
+
+            AnimatedBuilder(
+              animation: _historyStore,
+              builder: (context, _) {
+                final recentEntries = _historyStore.entries.take(5).toList();
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Terakhir Dipelajari',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
-                      );
-                    },
-                  ),
+                        TextButton(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => MaterialHistoryPage(
+                                  historyStore: _historyStore,
+                                  bookmarks: bookmarks,
+                                  onBookmarkChanged: () {
+                                    setState(() {});
+                                  },
+                                ),
+                              ),
+                            );
+                          },
+                          child: const Text('Lihat semua'),
+                        ),
+                      ],
+                    ),
+                    if (recentEntries.isEmpty)
+                      Card(
+                        child: ListTile(
+                          leading: Icon(
+                            Icons.history,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                          title: Text('Belum ada materi yang dipelajari'),
+                        ),
+                      )
+                    else
+                      ...recentEntries.map((entry) {
+                        final material = findMaterialById(entry.materialId);
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: Theme.of(context)
+                                  .colorScheme
+                                  .primaryContainer,
+                              child: Icon(
+                                material?.icon ?? Icons.menu_book,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                            title: Text(entry.title),
+                            subtitle: Text(
+                              '${entry.category} · ${formatHistoryTime(entry.lastOpened)}',
+                            ),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () => openHistoryEntry(
+                              context,
+                              entry,
+                              historyStore: _historyStore,
+                              bookmarks: bookmarks,
+                              onBookmarkChanged: () {
+                                setState(() {});
+                              },
+                            ),
+                          ),
+                        );
+                      }),
+                    if (_historyStore.storageFailed)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 4),
+                        child: Text(
+                          'Riwayat belum dapat disimpan di perangkat.',
+                          style: TextStyle(
+                            color: Colors.redAccent,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                  ],
                 );
               },
             ),
@@ -1489,32 +1565,13 @@ class _HomePageState extends State<HomePage> {
 // DATA KATEGORI
 // ============================================================
 
-final List<Map<String, dynamic>>
-    categoryData = [
-  {
-    'name': 'Computer Basics',
-    'icon': Icons.computer,
-  },
-  {
-    'name': 'Hardware',
-    'icon': Icons.memory,
-  },
-  {
-    'name': 'Software',
-    'icon': Icons.apps,
-  },
-  {
-    'name': 'Networking',
-    'icon': Icons.wifi,
-  },
-  {
-    'name': 'Network Devices',
-    'icon': Icons.router,
-  },
-  {
-    'name': 'Troubleshooting',
-    'icon': Icons.build,
-  },
+final List<Map<String, dynamic>> categoryData = [
+  {'name': 'Computer Basics', 'icon': Icons.computer},
+  {'name': 'Hardware', 'icon': Icons.memory},
+  {'name': 'Software', 'icon': Icons.apps},
+  {'name': 'Networking', 'icon': Icons.wifi},
+  {'name': 'Network Devices', 'icon': Icons.router},
+  {'name': 'Troubleshooting', 'icon': Icons.build},
 ];
 
 // ============================================================
@@ -1523,19 +1580,18 @@ final List<Map<String, dynamic>>
 
 class LearnPage extends StatefulWidget {
   final Set<String> bookmarks;
+  final MaterialHistoryStore historyStore;
   final VoidCallback onBookmarkChanged;
-  final VoidCallback onMaterialOpened;
 
   const LearnPage({
     super.key,
     required this.bookmarks,
+    required this.historyStore,
     required this.onBookmarkChanged,
-    required this.onMaterialOpened,
   });
 
   @override
-  State<LearnPage> createState() =>
-      _LearnPageState();
+  State<LearnPage> createState() => _LearnPageState();
 }
 
 class _LearnPageState extends State<LearnPage> {
@@ -1544,59 +1600,41 @@ class _LearnPageState extends State<LearnPage> {
   @override
   Widget build(BuildContext context) {
     final filtered = materials.where((material) {
-      return material.title
-              .toLowerCase()
-              .contains(search.toLowerCase()) ||
-          material.category
-              .toLowerCase()
-              .contains(search.toLowerCase());
+      return material.title.toLowerCase().contains(search.toLowerCase()) ||
+          material.category.toLowerCase().contains(search.toLowerCase());
     }).toList();
 
     return SafeArea(
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Padding(
-            padding:
-                EdgeInsets.fromLTRB(20, 25, 20, 5),
+            padding: EdgeInsets.fromLTRB(20, 25, 20, 5),
             child: Text(
               'Materi Pembelajaran',
-              style: TextStyle(
-                fontSize: 25,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
             ),
           ),
 
           const Padding(
-            padding:
-                EdgeInsets.symmetric(horizontal: 20),
+            padding: EdgeInsets.symmetric(horizontal: 20),
             child: Text(
               'Pelajari materi dasar Teknik Komputer dan Jaringan.',
-              style: TextStyle(
-                color: Colors.grey,
-              ),
+              style: TextStyle(color: Colors.grey),
             ),
           ),
 
           const SizedBox(height: 15),
 
           Padding(
-            padding:
-                const EdgeInsets.symmetric(
-              horizontal: 20,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 20),
             child: TextField(
               onChanged: (value) {
                 setState(() {
                   search = value;
                 });
               },
-              decoration: inputDecoration(
-                'Cari materi...',
-                Icons.search,
-              ),
+              decoration: inputDecoration('Cari materi...', Icons.search),
             ),
           ),
 
@@ -1604,102 +1642,64 @@ class _LearnPageState extends State<LearnPage> {
 
           Expanded(
             child: filtered.isEmpty
-                ? const Center(
-                    child: Text(
-                      'Materi tidak ditemukan.',
-                    ),
-                  )
+                ? const Center(child: Text('Materi tidak ditemukan.'))
                 : ListView.builder(
-                    padding:
-                        const EdgeInsets.all(20),
+                    padding: const EdgeInsets.all(20),
                     itemCount: filtered.length,
                     itemBuilder: (_, index) {
-                      final material =
-                          filtered[index];
+                      final material = filtered[index];
 
-                      final saved = widget
-                          .bookmarks
-                          .contains(
-                        material.title,
-                      );
+                      final saved = widget.bookmarks.contains(material.title);
 
                       return Card(
-                        margin:
-                            const EdgeInsets.only(
-                          bottom: 12,
-                        ),
+                        margin: const EdgeInsets.only(bottom: 12),
                         child: ListTile(
-                          contentPadding:
-                              const EdgeInsets.all(
-                            12,
-                          ),
+                          contentPadding: const EdgeInsets.all(12),
                           leading: CircleAvatar(
                             radius: 28,
-                            backgroundColor:
-                                lightBlue,
+                            backgroundColor: Theme.of(context)
+                                .colorScheme
+                                .primaryContainer,
                             child: Icon(
                               material.icon,
-                              color: primaryColor,
+                              color: Theme.of(context).colorScheme.primary,
                             ),
                           ),
                           title: Text(
                             material.title,
-                            style:
-                                const TextStyle(
-                              fontWeight:
-                                  FontWeight.bold,
-                            ),
+                            style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
-                          subtitle: Text(
-                            material.category,
-                          ),
-                          trailing:
-                              IconButton(
+                          subtitle: Text(material.category),
+                          trailing: IconButton(
                             icon: Icon(
-                              saved
-                                  ? Icons.bookmark
-                                  : Icons
-                                      .bookmark_border,
+                              saved ? Icons.bookmark : Icons.bookmark_border,
                               color: saved
-                                  ? primaryColor
-                                  : Colors.grey,
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
                             ),
                             onPressed: () {
                               if (saved) {
-                                widget.bookmarks
-                                    .remove(
-                                  material.title,
-                                );
+                                widget.bookmarks.remove(material.title);
                               } else {
-                                widget.bookmarks
-                                    .add(
-                                  material.title,
-                                );
+                                widget.bookmarks.add(material.title);
                               }
 
-                              widget
-                                  .onBookmarkChanged();
+                              widget.onBookmarkChanged();
 
                               setState(() {});
                             },
                           ),
                           onTap: () {
-                            widget
-                                .onMaterialOpened();
-
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) =>
-                                    MaterialDetailPage(
-                                  material:
-                                      material,
-                                  bookmarks:
-                                      widget
-                                          .bookmarks,
-                                  onBookmarkChanged:
-                                      widget
-                                          .onBookmarkChanged,
+                                builder: (_) => MaterialDetailPage(
+                                  material: material,
+                                  bookmarks: widget.bookmarks,
+                                  historyStore: widget.historyStore,
+                                  onBookmarkChanged: widget.onBookmarkChanged,
                                 ),
                               ),
                             );
@@ -1720,29 +1720,32 @@ class _LearnPageState extends State<LearnPage> {
 // ============================================================
 
 class SearchPage extends StatefulWidget {
-  const SearchPage({super.key});
+  final Set<String> bookmarks;
+  final MaterialHistoryStore historyStore;
+  final VoidCallback onBookmarkChanged;
+
+  const SearchPage({
+    super.key,
+    required this.bookmarks,
+    required this.historyStore,
+    required this.onBookmarkChanged,
+  });
 
   @override
-  State<SearchPage> createState() =>
-      _SearchPageState();
+  State<SearchPage> createState() => _SearchPageState();
 }
 
-class _SearchPageState
-    extends State<SearchPage> {
+class _SearchPageState extends State<SearchPage> {
   String search = '';
 
   @override
   Widget build(BuildContext context) {
     final result = materials.where((material) {
-      return material.title
-          .toLowerCase()
-          .contains(search.toLowerCase());
+      return material.title.toLowerCase().contains(search.toLowerCase());
     }).toList();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Cari Materi'),
-      ),
+      appBar: AppBar(title: const Text('Cari Materi')),
       body: Column(
         children: [
           Padding(
@@ -1770,23 +1773,19 @@ class _SearchPageState
                 return ListTile(
                   leading: Icon(
                     material.icon,
-                    color: primaryColor,
+                    color: Theme.of(context).colorScheme.primary,
                   ),
-                  title: Text(
-                    material.title,
-                  ),
-                  subtitle: Text(
-                    material.category,
-                  ),
+                  title: Text(material.title),
+                  subtitle: Text(material.category),
                   onTap: () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) =>
-                            MaterialDetailPage(
+                        builder: (_) => MaterialDetailPage(
                           material: material,
-                          bookmarks: {},
-                          onBookmarkChanged: () {},
+                          bookmarks: widget.bookmarks,
+                          historyStore: widget.historyStore,
+                          onBookmarkChanged: widget.onBookmarkChanged,
                         ),
                       ),
                     );
@@ -1808,76 +1807,59 @@ class _SearchPageState
 class CategoryPage extends StatelessWidget {
   final String category;
   final Set<String> bookmarks;
+  final MaterialHistoryStore historyStore;
   final VoidCallback onBookmarkChanged;
 
   const CategoryPage({
     super.key,
     required this.category,
     required this.bookmarks,
+    required this.historyStore,
     required this.onBookmarkChanged,
   });
 
   @override
   Widget build(BuildContext context) {
     final filtered = materials
-        .where(
-          (material) =>
-              material.category == category,
-        )
+        .where((material) => material.category == category)
         .toList();
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(category),
-      ),
+      appBar: AppBar(title: Text(category)),
       body: filtered.isEmpty
-          ? const Center(
-              child: Text(
-                'Belum ada materi.',
-              ),
-            )
+          ? const Center(child: Text('Belum ada materi.'))
           : ListView.builder(
               padding: const EdgeInsets.all(20),
               itemCount: filtered.length,
               itemBuilder: (_, index) {
-                final material =
-                    filtered[index];
+                final material = filtered[index];
 
                 return Card(
-                  margin:
-                      const EdgeInsets.only(
-                    bottom: 12,
-                  ),
+                  margin: const EdgeInsets.only(bottom: 12),
                   child: ListTile(
                     leading: CircleAvatar(
-                      backgroundColor:
-                          lightBlue,
+                      backgroundColor: Theme.of(context)
+                          .colorScheme
+                          .primaryContainer,
                       child: Icon(
                         material.icon,
-                        color: primaryColor,
+                        color: Theme.of(context).colorScheme.primary,
                       ),
                     ),
                     title: Text(
                       material.title,
-                      style:
-                          const TextStyle(
-                        fontWeight:
-                            FontWeight.bold,
-                      ),
+                      style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
-                    subtitle: Text(
-                      material.description,
-                    ),
+                    subtitle: Text(material.description),
                     onTap: () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) =>
-                              MaterialDetailPage(
+                          builder: (_) => MaterialDetailPage(
                             material: material,
                             bookmarks: bookmarks,
-                            onBookmarkChanged:
-                                onBookmarkChanged,
+                            historyStore: historyStore,
+                            onBookmarkChanged: onBookmarkChanged,
                           ),
                         ),
                       );
@@ -1897,26 +1879,31 @@ class CategoryPage extends StatelessWidget {
 class MaterialDetailPage extends StatefulWidget {
   final MaterialData material;
   final Set<String> bookmarks;
+  final MaterialHistoryStore historyStore;
   final VoidCallback onBookmarkChanged;
 
   const MaterialDetailPage({
     super.key,
     required this.material,
     required this.bookmarks,
+    required this.historyStore,
     required this.onBookmarkChanged,
   });
 
   @override
-  State<MaterialDetailPage> createState() =>
-      _MaterialDetailPageState();
+  State<MaterialDetailPage> createState() => _MaterialDetailPageState();
 }
 
-class _MaterialDetailPageState
-    extends State<MaterialDetailPage> {
+class _MaterialDetailPageState extends State<MaterialDetailPage> {
+  @override
+  void initState() {
+    super.initState();
+    widget.historyStore.record(widget.material);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final saved = widget.bookmarks
-        .contains(widget.material.title);
+    final saved = widget.bookmarks.contains(widget.material.title);
 
     return Scaffold(
       appBar: AppBar(
@@ -1926,44 +1913,34 @@ class _MaterialDetailPageState
             onPressed: () {
               setState(() {
                 if (saved) {
-                  widget.bookmarks.remove(
-                    widget.material.title,
-                  );
+                  widget.bookmarks.remove(widget.material.title);
                 } else {
-                  widget.bookmarks.add(
-                    widget.material.title,
-                  );
+                  widget.bookmarks.add(widget.material.title);
                 }
               });
 
               widget.onBookmarkChanged();
             },
-            icon: Icon(
-              saved
-                  ? Icons.bookmark
-                  : Icons.bookmark_border,
-            ),
+            icon: Icon(saved ? Icons.bookmark : Icons.bookmark_border),
           ),
         ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
               width: double.infinity,
               height: 180,
               decoration: BoxDecoration(
-                color: lightBlue,
-                borderRadius:
-                    BorderRadius.circular(20),
+                color: Theme.of(context).colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(20),
               ),
               child: Icon(
                 widget.material.icon,
                 size: 90,
-                color: primaryColor,
+                color: Theme.of(context).colorScheme.primary,
               ),
             ),
 
@@ -1971,8 +1948,8 @@ class _MaterialDetailPageState
 
             Text(
               widget.material.category,
-              style: const TextStyle(
-                color: primaryColor,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.primary,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -1981,10 +1958,7 @@ class _MaterialDetailPageState
 
             Text(
               widget.material.title,
-              style: const TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
             ),
 
             const SizedBox(height: 15),
@@ -2002,30 +1976,21 @@ class _MaterialDetailPageState
 
             const Text(
               'Pembahasan',
-              style: TextStyle(
-                fontSize: 21,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
             ),
 
             const SizedBox(height: 12),
 
             Text(
               widget.material.content,
-              style: const TextStyle(
-                fontSize: 16,
-                height: 1.7,
-              ),
+              style: const TextStyle(fontSize: 16, height: 1.7),
             ),
 
             const SizedBox(height: 25),
 
             const Text(
               'Poin Penting',
-              style: TextStyle(
-                fontSize: 21,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
             ),
 
             const SizedBox(height: 12),
@@ -2034,16 +1999,12 @@ class _MaterialDetailPageState
               width: double.infinity,
               padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
-                color: lightBlue,
-                borderRadius:
-                    BorderRadius.circular(15),
+                color: Theme.of(context).colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(15),
               ),
               child: Text(
                 widget.material.importantPoints,
-                style: const TextStyle(
-                  fontSize: 15,
-                  height: 1.7,
-                ),
+                style: const TextStyle(fontSize: 15, height: 1.7),
               ),
             ),
 
@@ -2056,20 +2017,184 @@ class _MaterialDetailPageState
                 onPressed: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          const QuizPage(),
-                    ),
+                    MaterialPageRoute(builder: (_) => const QuizPage()),
                   );
                 },
                 icon: const Icon(Icons.quiz),
-                label: const Text(
-                  'Kerjakan Quiz',
-                ),
+                label: const Text('Kerjakan Quiz'),
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+MaterialData? findMaterialById(String materialId) {
+  for (final material in materials) {
+    if (material.id == materialId) return material;
+  }
+  return null;
+}
+
+String formatHistoryTime(DateTime timestamp) {
+  final difference = DateTime.now().difference(timestamp);
+  if (difference.isNegative || difference.inSeconds < 60) {
+    return 'Baru saja';
+  }
+  if (difference.inMinutes < 60) {
+    return '${difference.inMinutes} menit lalu';
+  }
+  if (difference.inHours < 24) {
+    return '${difference.inHours} jam lalu';
+  }
+  if (difference.inDays < 7) {
+    return '${difference.inDays} hari lalu';
+  }
+  final localTime = timestamp.toLocal();
+  final day = localTime.day.toString().padLeft(2, '0');
+  final month = localTime.month.toString().padLeft(2, '0');
+  return '$day/$month/${localTime.year}';
+}
+
+void openHistoryEntry(
+  BuildContext context,
+  MaterialHistoryEntry entry, {
+  required MaterialHistoryStore historyStore,
+  required Set<String> bookmarks,
+  required VoidCallback onBookmarkChanged,
+}) {
+  final material = findMaterialById(entry.materialId);
+  if (material == null) {
+    historyStore.remove(entry.materialId);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Materi ini sudah tidak tersedia.')),
+    );
+    return;
+  }
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => MaterialDetailPage(
+        material: material,
+        bookmarks: bookmarks,
+        historyStore: historyStore,
+        onBookmarkChanged: onBookmarkChanged,
+      ),
+    ),
+  );
+}
+
+class MaterialHistoryPage extends StatelessWidget {
+  final MaterialHistoryStore historyStore;
+  final Set<String> bookmarks;
+  final VoidCallback onBookmarkChanged;
+
+  const MaterialHistoryPage({
+    super.key,
+    required this.historyStore,
+    required this.bookmarks,
+    required this.onBookmarkChanged,
+  });
+
+  Future<void> _confirmClear(BuildContext context) async {
+    final shouldClear = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Hapus semua riwayat?'),
+        content: const Text('Semua materi dari riwayat belajar akan dihapus.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Hapus semua'),
+          ),
+        ],
+      ),
+    );
+    if (shouldClear == true) await historyStore.clear();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Riwayat Materi'),
+        actions: [
+          AnimatedBuilder(
+            animation: historyStore,
+            builder: (context, _) => IconButton(
+              tooltip: 'Hapus semua riwayat',
+              onPressed: historyStore.entries.isEmpty
+                  ? null
+                  : () => _confirmClear(context),
+              icon: const Icon(Icons.delete_sweep_outlined),
+            ),
+          ),
+        ],
+      ),
+      body: AnimatedBuilder(
+        animation: historyStore,
+        builder: (context, _) {
+          final entries = historyStore.entries;
+          if (!historyStore.isLoaded) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (entries.isEmpty) {
+            return const Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.history, size: 56, color: Colors.grey),
+                  SizedBox(height: 12),
+                  Text('Belum ada materi yang dipelajari'),
+                ],
+              ),
+            );
+          }
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: entries.length,
+            itemBuilder: (context, index) {
+              final entry = entries[index];
+              final material = findMaterialById(entry.materialId);
+              return Card(
+                margin: const EdgeInsets.only(bottom: 10),
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: Theme.of(context)
+                        .colorScheme
+                        .primaryContainer,
+                    child: Icon(
+                      material?.icon ?? Icons.menu_book,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  title: Text(entry.title),
+                  subtitle: Text(
+                    '${entry.category} · ${formatHistoryTime(entry.lastOpened)}',
+                  ),
+                  trailing: IconButton(
+                    tooltip: 'Hapus dari riwayat',
+                    icon: const Icon(Icons.close),
+                    onPressed: () => historyStore.remove(entry.materialId),
+                  ),
+                  onTap: () => openHistoryEntry(
+                    context,
+                    entry,
+                    historyStore: historyStore,
+                    bookmarks: bookmarks,
+                    onBookmarkChanged: onBookmarkChanged,
+                  ),
+                ),
+              );
+            },
+          );
+        },
       ),
     );
   }
@@ -2081,50 +2206,39 @@ class _MaterialDetailPageState
 
 class BookmarkPage extends StatelessWidget {
   final Set<String> bookmarks;
+  final MaterialHistoryStore historyStore;
   final VoidCallback onBookmarkChanged;
 
   const BookmarkPage({
     super.key,
     required this.bookmarks,
+    required this.historyStore,
     required this.onBookmarkChanged,
   });
 
   @override
   Widget build(BuildContext context) {
     final savedMaterials = materials
-        .where(
-          (material) =>
-              bookmarks.contains(
-            material.title,
-          ),
-        )
+        .where((material) => bookmarks.contains(material.title))
         .toList();
 
     return SafeArea(
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Padding(
-            padding:
-                EdgeInsets.fromLTRB(20, 25, 20, 5),
+            padding: EdgeInsets.fromLTRB(20, 25, 20, 5),
             child: Text(
               'Bookmark',
-              style: TextStyle(
-                fontSize: 25,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
             ),
           ),
 
           const Padding(
-            padding:
-                EdgeInsets.symmetric(horizontal: 20),
+            padding: EdgeInsets.symmetric(horizontal: 20),
             child: Text(
               'Materi yang kamu simpan.',
-              style: TextStyle(
-                color: Colors.grey,
-              ),
+              style: TextStyle(color: Colors.grey),
             ),
           ),
 
@@ -2134,8 +2248,7 @@ class BookmarkPage extends StatelessWidget {
             child: savedMaterials.isEmpty
                 ? const Center(
                     child: Column(
-                      mainAxisAlignment:
-                          MainAxisAlignment.center,
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(
                           Icons.bookmark_border,
@@ -2143,43 +2256,31 @@ class BookmarkPage extends StatelessWidget {
                           color: Colors.grey,
                         ),
                         SizedBox(height: 15),
-                        Text(
-                          'Belum ada materi yang disimpan.',
-                        ),
+                        Text('Belum ada materi yang disimpan.'),
                       ],
                     ),
                   )
                 : ListView.builder(
-                    padding:
-                        const EdgeInsets.all(20),
-                    itemCount:
-                        savedMaterials.length,
+                    padding: const EdgeInsets.all(20),
+                    itemCount: savedMaterials.length,
                     itemBuilder: (_, index) {
-                      final material =
-                          savedMaterials[index];
+                      final material = savedMaterials[index];
 
                       return Card(
                         child: ListTile(
                           leading: Icon(
                             material.icon,
-                            color: primaryColor,
+                            color: Theme.of(context).colorScheme.primary,
                           ),
-                          title: Text(
-                            material.title,
-                          ),
-                          subtitle: Text(
-                            material.category,
-                          ),
-                          trailing:
-                              IconButton(
-                            icon: const Icon(
+                          title: Text(material.title),
+                          subtitle: Text(material.category),
+                          trailing: IconButton(
+                            icon: Icon(
                               Icons.bookmark,
-                              color: primaryColor,
+                              color: Theme.of(context).colorScheme.primary,
                             ),
                             onPressed: () {
-                              bookmarks.remove(
-                                material.title,
-                              );
+                              bookmarks.remove(material.title);
 
                               onBookmarkChanged();
                             },
@@ -2188,13 +2289,11 @@ class BookmarkPage extends StatelessWidget {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) =>
-                                    MaterialDetailPage(
+                                builder: (_) => MaterialDetailPage(
                                   material: material,
-                                  bookmarks:
-                                      bookmarks,
-                                  onBookmarkChanged:
-                                      onBookmarkChanged,
+                                  bookmarks: bookmarks,
+                                  historyStore: historyStore,
+                                  onBookmarkChanged: onBookmarkChanged,
                                 ),
                               ),
                             );
@@ -2217,14 +2316,10 @@ class BookmarkPage extends StatelessWidget {
 class QuizPage extends StatefulWidget {
   final VoidCallback? onQuizFinished;
 
-  const QuizPage({
-    super.key,
-    this.onQuizFinished,
-  });
+  const QuizPage({super.key, this.onQuizFinished});
 
   @override
-  State<QuizPage> createState() =>
-      _QuizPageState();
+  State<QuizPage> createState() => _QuizPageState();
 }
 
 class _QuizPageState extends State<QuizPage> {
@@ -2241,31 +2336,22 @@ class _QuizPageState extends State<QuizPage> {
   void nextQuestion() {
     if (selectedAnswer == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content:
-              Text('Pilih jawaban terlebih dahulu.'),
-        ),
+        const SnackBar(content: Text('Pilih jawaban terlebih dahulu.')),
       );
       return;
     }
 
-    if (selectedAnswer ==
-        quizQuestions[currentQuestion]
-            .correctAnswer) {
+    if (selectedAnswer == quizQuestions[currentQuestion].correctAnswer) {
       score++;
     }
 
-    if (currentQuestion <
-        quizQuestions.length - 1) {
+    if (currentQuestion < quizQuestions.length - 1) {
       setState(() {
         currentQuestion++;
         selectedAnswer = null;
       });
     } else {
-      final finalScore =
-          ((score / quizQuestions.length) *
-                  100)
-              .round();
+      final finalScore = ((score / quizQuestions.length) * 100).round();
 
       quizHistory.add({
         'score': finalScore,
@@ -2279,10 +2365,8 @@ class _QuizPageState extends State<QuizPage> {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => QuizResultPage(
-            score: score,
-            total: quizQuestions.length,
-          ),
+          builder: (_) =>
+              QuizResultPage(score: score, total: quizQuestions.length),
         ),
       );
     }
@@ -2290,33 +2374,27 @@ class _QuizPageState extends State<QuizPage> {
 
   @override
   Widget build(BuildContext context) {
-    final question =
-        quizQuestions[currentQuestion];
+    final question = quizQuestions[currentQuestion];
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Quiz TKJ'),
-      ),
+      appBar: AppBar(title: const Text('Quiz TKJ')),
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               'Soal ${currentQuestion + 1} dari ${quizQuestions.length}',
-              style: const TextStyle(
+              style: TextStyle(
                 fontWeight: FontWeight.bold,
-                color: primaryColor,
+                color: Theme.of(context).colorScheme.primary,
               ),
             ),
 
             const SizedBox(height: 15),
 
             LinearProgressIndicator(
-              value:
-                  (currentQuestion + 1) /
-                  quizQuestions.length,
+              value: (currentQuestion + 1) / quizQuestions.length,
             ),
 
             const SizedBox(height: 30),
@@ -2332,62 +2410,45 @@ class _QuizPageState extends State<QuizPage> {
 
             const SizedBox(height: 25),
 
-            ...List.generate(
-              question.options.length,
-              (index) {
-                final selected =
-                    selectedAnswer == index;
+            ...List.generate(question.options.length, (index) {
+              final selected = selectedAnswer == index;
 
-                return Container(
-                  margin:
-                      const EdgeInsets.only(
-                    bottom: 12,
-                  ),
-                  width: double.infinity,
-                  child: OutlinedButton(
-                    onPressed: () {
-                      chooseAnswer(index);
-                    },
-                    style:
-                        OutlinedButton.styleFrom(
-                      padding:
-                          const EdgeInsets.all(
-                        18,
-                      ),
-                      alignment:
-                          Alignment.centerLeft,
-                      backgroundColor: selected
-                          ? lightBlue
-                          : Colors.white,
-                      side: BorderSide(
-                        color: selected
-                            ? primaryColor
-                            : Colors.grey
-                                .shade300,
-                      ),
-                      shape:
-                          RoundedRectangleBorder(
-                        borderRadius:
-                            BorderRadius.circular(
-                          14,
-                        ),
-                      ),
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () {
+                    chooseAnswer(index);
+                  },
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.all(18),
+                    alignment: Alignment.centerLeft,
+                    backgroundColor: selected
+                        ? Theme.of(context).colorScheme.primaryContainer
+                        : Theme.of(context).colorScheme.surface,
+                    side: BorderSide(
+                      color: selected
+                          ? Theme.of(context).colorScheme.primary
+                          : Theme.of(context).colorScheme.outline,
                     ),
-                    child: Text(
-                      question.options[index],
-                      style: TextStyle(
-                        color: selected
-                            ? primaryColor
-                            : Colors.black87,
-                        fontWeight: selected
-                            ? FontWeight.bold
-                            : FontWeight.normal,
-                      ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
                     ),
                   ),
-                );
-              },
-            ),
+                  child: Text(
+                    question.options[index],
+                    style: TextStyle(
+                      color: selected
+                          ? Theme.of(context).colorScheme.onPrimaryContainer
+                          : Theme.of(context).colorScheme.onSurface,
+                      fontWeight: selected
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                    ),
+                  ),
+                ),
+              );
+            }),
 
             const Spacer(),
 
@@ -2397,8 +2458,7 @@ class _QuizPageState extends State<QuizPage> {
               child: ElevatedButton(
                 onPressed: nextQuestion,
                 child: Text(
-                  currentQuestion ==
-                          quizQuestions.length - 1
+                  currentQuestion == quizQuestions.length - 1
                       ? 'Selesai'
                       : 'Soal Berikutnya',
                 ),
@@ -2419,81 +2479,62 @@ class QuizResultPage extends StatelessWidget {
   final int score;
   final int total;
 
-  const QuizResultPage({
-    super.key,
-    required this.score,
-    required this.total,
-  });
+  const QuizResultPage({super.key, required this.score, required this.total});
 
   @override
   Widget build(BuildContext context) {
-    final nilai =
-        ((score / total) * 100).round();
+    final nilai = ((score / total) * 100).round();
 
     String message;
 
     if (nilai >= 80) {
-      message =
-          'Pemahaman materi kamu sudah baik.';
+      message = 'Pemahaman materi kamu sudah baik.';
     } else if (nilai >= 60) {
-      message =
-          'Pemahaman kamu cukup baik, tetapi masih dapat ditingkatkan.';
+      message = 'Pemahaman kamu cukup baik, tetapi masih dapat ditingkatkan.';
     } else {
-      message =
-          'Pelajari kembali materi kemudian coba quiz lagi.';
+      message = 'Pelajari kembali materi kemudian coba quiz lagi.';
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Hasil Quiz'),
-      ),
+      appBar: AppBar(title: const Text('Hasil Quiz')),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(25),
           child: Column(
-            mainAxisAlignment:
-                MainAxisAlignment.center,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(
+              Icon(
                 Icons.assessment_outlined,
                 size: 90,
-                color: primaryColor,
+                color: Theme.of(context).colorScheme.primary,
               ),
 
               const SizedBox(height: 20),
 
               const Text(
                 'Quiz Selesai',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
               ),
 
               const SizedBox(height: 20),
 
               Text(
                 '$nilai',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 65,
                   fontWeight: FontWeight.bold,
-                  color: primaryColor,
+                  color: Theme.of(context).colorScheme.primary,
                 ),
               ),
 
               Text(
                 '$score benar dari $total soal',
-                style: const TextStyle(
-                  color: Colors.grey,
-                ),
+                style: const TextStyle(color: Colors.grey),
               ),
 
               const SizedBox(height: 20),
 
-              Text(
-                message,
-                textAlign: TextAlign.center,
-              ),
+              Text(message, textAlign: TextAlign.center),
 
               const SizedBox(height: 30),
 
@@ -2504,9 +2545,7 @@ class QuizResultPage extends StatelessWidget {
                   onPressed: () {
                     Navigator.pop(context);
                   },
-                  child: const Text(
-                    'Kembali',
-                  ),
+                  child: const Text('Kembali'),
                 ),
               ),
             ],
@@ -2536,9 +2575,7 @@ class ProfilePage extends StatelessWidget {
   void logout(BuildContext context) {
     Navigator.pushAndRemoveUntil(
       context,
-      MaterialPageRoute(
-        builder: (_) => const LoginPage(),
-      ),
+      MaterialPageRoute(builder: (_) => const LoginPage()),
       (route) => false,
     );
   }
@@ -2552,13 +2589,13 @@ class ProfilePage extends StatelessWidget {
           children: [
             const SizedBox(height: 25),
 
-            const CircleAvatar(
+            CircleAvatar(
               radius: 50,
-              backgroundColor: lightBlue,
+              backgroundColor: Theme.of(context).colorScheme.primaryContainer,
               child: Icon(
                 Icons.person,
                 size: 55,
-                color: primaryColor,
+                color: Theme.of(context).colorScheme.primary,
               ),
             ),
 
@@ -2566,18 +2603,10 @@ class ProfilePage extends StatelessWidget {
 
             Text(
               userName,
-              style: const TextStyle(
-                fontSize: 23,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 23, fontWeight: FontWeight.bold),
             ),
 
-            Text(
-              email,
-              style: const TextStyle(
-                color: Colors.grey,
-              ),
-            ),
+            Text(email, style: const TextStyle(color: Colors.grey)),
 
             const SizedBox(height: 30),
 
@@ -2585,8 +2614,7 @@ class ProfilePage extends StatelessWidget {
               child: Column(
                 children: [
                   ListTile(
-                    leading:
-                        const Icon(Icons.person),
+                    leading: const Icon(Icons.person),
                     title: const Text('Nama'),
                     subtitle: Text(userName),
                   ),
@@ -2594,8 +2622,7 @@ class ProfilePage extends StatelessWidget {
                   const Divider(height: 1),
 
                   ListTile(
-                    leading:
-                        const Icon(Icons.email),
+                    leading: const Icon(Icons.email),
                     title: const Text('Email'),
                     subtitle: Text(email),
                   ),
@@ -2603,43 +2630,33 @@ class ProfilePage extends StatelessWidget {
                   const Divider(height: 1),
 
                   const ListTile(
-                    leading:
-                        Icon(Icons.school),
+                    leading: Icon(Icons.school),
                     title: Text('Jurusan'),
-                    subtitle: Text(
-                      'Teknik Komputer dan Jaringan',
-                    ),
+                    subtitle: Text('Teknik Komputer dan Jaringan'),
                   ),
 
                   const Divider(height: 1),
 
                   ListTile(
-                    leading: const Icon(
-                      Icons.menu_book,
-                    ),
-                    title: const Text(
-                      'Materi Dipelajari',
-                    ),
-                    subtitle: Text(
-                      '$completedMaterials materi',
-                    ),
+                    leading: const Icon(Icons.menu_book),
+                    title: const Text('Materi Dipelajari'),
+                    subtitle: Text('$completedMaterials materi'),
                   ),
 
                   const Divider(height: 1),
 
                   ListTile(
-                    leading:
-                        const Icon(Icons.quiz),
-                    title: const Text(
-                      'Quiz Dikerjakan',
-                    ),
-                    subtitle: Text(
-                      '${quizHistory.length} quiz',
-                    ),
+                    leading: const Icon(Icons.quiz),
+                    title: const Text('Quiz Dikerjakan'),
+                    subtitle: Text('${quizHistory.length} quiz'),
                   ),
                 ],
               ),
             ),
+
+            const SizedBox(height: 20),
+
+            const Card(child: ThemeModeTile()),
 
             const SizedBox(height: 20),
 
@@ -2669,20 +2686,16 @@ class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
 
   @override
-  State<AdminDashboard> createState() =>
-      _AdminDashboardState();
+  State<AdminDashboard> createState() => _AdminDashboardState();
 }
 
-class _AdminDashboardState
-    extends State<AdminDashboard> {
+class _AdminDashboardState extends State<AdminDashboard> {
   int currentIndex = 0;
 
   void logout() {
     Navigator.pushAndRemoveUntil(
       context,
-      MaterialPageRoute(
-        builder: (_) => const LoginPage(),
-      ),
+      MaterialPageRoute(builder: (_) => const LoginPage()),
       (route) => false,
     );
   }
@@ -2702,11 +2715,10 @@ class _AdminDashboardState
 
     return Scaffold(
       body: pages[currentIndex],
-      bottomNavigationBar:
-          BottomNavigationBar(
+      bottomNavigationBar: BottomNavigationBar(
         currentIndex: currentIndex,
         type: BottomNavigationBarType.fixed,
-        selectedItemColor: primaryColor,
+        selectedItemColor: Theme.of(context).colorScheme.primary,
         onTap: (index) {
           setState(() {
             currentIndex = index;
@@ -2719,8 +2731,7 @@ class _AdminDashboardState
             label: 'Dashboard',
           ),
           BottomNavigationBarItem(
-            icon:
-                Icon(Icons.menu_book_outlined),
+            icon: Icon(Icons.menu_book_outlined),
             activeIcon: Icon(Icons.menu_book),
             label: 'Materi',
           ),
@@ -2744,36 +2755,29 @@ class _AdminDashboardState
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 15),
 
             Row(
-              mainAxisAlignment:
-                  MainAxisAlignment.spaceBetween,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text(
                   'Dashboard Admin',
-                  style: TextStyle(
-                    fontSize: 25,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
                 ),
-                IconButton(
-                  onPressed: logout,
-                  icon:
-                      const Icon(Icons.logout),
-                ),
+                IconButton(onPressed: logout, icon: const Icon(Icons.logout)),
               ],
             ),
 
             const Text(
               'Kelola konten aplikasi TechExplorer.',
-              style: TextStyle(
-                color: Colors.grey,
-              ),
+              style: TextStyle(color: Colors.grey),
             ),
+
+            const SizedBox(height: 12),
+
+            const Card(child: ThemeModeTile()),
 
             const SizedBox(height: 25),
 
@@ -2790,8 +2794,7 @@ class _AdminDashboardState
                 Expanded(
                   child: statCard(
                     'Soal',
-                    quizQuestions.length
-                        .toString(),
+                    quizQuestions.length.toString(),
                     Icons.quiz,
                   ),
                 ),
@@ -2813,8 +2816,7 @@ class _AdminDashboardState
                 Expanded(
                   child: statCard(
                     'Hasil Quiz',
-                    quizHistory.length
-                        .toString(),
+                    quizHistory.length.toString(),
                     Icons.assessment,
                   ),
                 ),
@@ -2825,83 +2827,50 @@ class _AdminDashboardState
 
             const Text(
               'Kategori',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
 
             const SizedBox(height: 15),
 
-            ...categoryData.map(
-              (category) {
-                final count = materials
-                    .where(
-                      (material) =>
-                          material.category ==
-                          category['name'],
-                    )
-                    .length;
+            ...categoryData.map((category) {
+              final count = materials
+                  .where((material) => material.category == category['name'])
+                  .length;
 
-                return Card(
-                  child: ListTile(
-                    leading: Icon(
-                      category['icon']
-                          as IconData,
-                      color: primaryColor,
-                    ),
-                    title: Text(
-                      category['name']
-                          as String,
-                    ),
-                    trailing: Text(
-                      '$count materi',
-                    ),
+              return Card(
+                child: ListTile(
+                  leading: Icon(
+                    category['icon'] as IconData,
+                    color: Theme.of(context).colorScheme.primary,
                   ),
-                );
-              },
-            ),
+                  title: Text(category['name'] as String),
+                  trailing: Text('$count materi'),
+                ),
+              );
+            }),
           ],
         ),
       ),
     );
   }
 
-  Widget statCard(
-    String title,
-    String value,
-    IconData icon,
-  ) {
+  Widget statCard(String title, String value, IconData icon) {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(18),
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(18),
       ),
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            icon,
-            color: primaryColor,
-            size: 30,
-          ),
+          Icon(icon, color: Theme.of(context).colorScheme.primary, size: 30),
           const SizedBox(height: 12),
           Text(
             value,
-            style: const TextStyle(
-              fontSize: 25,
-              fontWeight: FontWeight.bold,
-            ),
+            style: const TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
           ),
-          Text(
-            title,
-            style: const TextStyle(
-              color: Colors.grey,
-            ),
-          ),
+          Text(title, style: const TextStyle(color: Colors.grey)),
         ],
       ),
     );
@@ -2915,25 +2884,17 @@ class _AdminDashboardState
 class AdminMaterialPage extends StatefulWidget {
   final VoidCallback onChanged;
 
-  const AdminMaterialPage({
-    super.key,
-    required this.onChanged,
-  });
+  const AdminMaterialPage({super.key, required this.onChanged});
 
   @override
-  State<AdminMaterialPage> createState() =>
-      _AdminMaterialPageState();
+  State<AdminMaterialPage> createState() => _AdminMaterialPageState();
 }
 
-class _AdminMaterialPageState
-    extends State<AdminMaterialPage> {
+class _AdminMaterialPageState extends State<AdminMaterialPage> {
   void addMaterial() {
-    final titleController =
-        TextEditingController();
-    final descriptionController =
-        TextEditingController();
-    final contentController =
-        TextEditingController();
+    final titleController = TextEditingController();
+    final descriptionController = TextEditingController();
+    final contentController = TextEditingController();
 
     String category = 'Hardware';
 
@@ -2941,68 +2902,46 @@ class _AdminMaterialPageState
       context: context,
       builder: (_) {
         return StatefulBuilder(
-          builder:
-              (context, setDialogState) {
+          builder: (context, setDialogState) {
             return AlertDialog(
-              title:
-                  const Text('Tambah Materi'),
+              title: const Text('Tambah Materi'),
               content: SingleChildScrollView(
                 child: Column(
                   children: [
                     TextField(
-                      controller:
-                          titleController,
-                      decoration:
-                          const InputDecoration(
+                      controller: titleController,
+                      decoration: const InputDecoration(
                         labelText: 'Judul Materi',
                       ),
                     ),
 
                     TextField(
-                      controller:
-                          descriptionController,
-                      decoration:
-                          const InputDecoration(
-                        labelText: 'Deskripsi',
-                      ),
+                      controller: descriptionController,
+                      decoration: const InputDecoration(labelText: 'Deskripsi'),
                     ),
 
                     TextField(
-                      controller:
-                          contentController,
+                      controller: contentController,
                       maxLines: 5,
-                      decoration:
-                          const InputDecoration(
-                        labelText:
-                            'Pembahasan',
+                      decoration: const InputDecoration(
+                        labelText: 'Pembahasan',
                       ),
                     ),
 
-                    DropdownButtonFormField<
-                        String>(
+                    DropdownButtonFormField<String>(
                       value: category,
-                      decoration:
-                          const InputDecoration(
-                        labelText: 'Kategori',
-                      ),
+                      decoration: const InputDecoration(labelText: 'Kategori'),
                       items: categoryData
                           .map(
-                            (item) =>
-                                DropdownMenuItem(
-                              value:
-                                  item['name']
-                                      as String,
-                              child: Text(
-                                item['name']
-                                    as String,
-                              ),
+                            (item) => DropdownMenuItem(
+                              value: item['name'] as String,
+                              child: Text(item['name'] as String),
                             ),
                           )
                           .toList(),
                       onChanged: (value) {
                         setDialogState(() {
-                          category =
-                              value!;
+                          category = value!;
                         });
                       },
                     ),
@@ -3014,37 +2953,24 @@ class _AdminMaterialPageState
                   onPressed: () {
                     Navigator.pop(context);
                   },
-                  child:
-                      const Text('Batal'),
+                  child: const Text('Batal'),
                 ),
                 ElevatedButton(
                   onPressed: () {
-                    if (titleController
-                            .text
-                            .isEmpty ||
-                        descriptionController
-                            .text
-                            .isEmpty ||
-                        contentController
-                            .text
-                            .isEmpty) {
+                    if (titleController.text.isEmpty ||
+                        descriptionController.text.isEmpty ||
+                        contentController.text.isEmpty) {
                       return;
                     }
 
                     materials.add(
                       MaterialData(
-                        title:
-                            titleController
-                                .text,
+                        id: 'admin-material-${DateTime.now().microsecondsSinceEpoch}',
+                        title: titleController.text,
                         category: category,
-                        description:
-                            descriptionController
-                                .text,
-                        content:
-                            contentController
-                                .text,
-                        importantPoints:
-                            'Materi ditambahkan oleh admin.',
+                        description: descriptionController.text,
+                        content: contentController.text,
+                        importantPoints: 'Materi ditambahkan oleh admin.',
                         icon: Icons.menu_book,
                       ),
                     );
@@ -3055,8 +2981,7 @@ class _AdminMaterialPageState
 
                     widget.onChanged();
                   },
-                  child:
-                      const Text('Simpan'),
+                  child: const Text('Simpan'),
                 ),
               ],
             );
@@ -3070,17 +2995,12 @@ class _AdminMaterialPageState
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        title:
-            const Text('Hapus Materi'),
-        content: Text(
-          'Hapus materi "${materials[index].title}"?',
-        ),
+        title: const Text('Hapus Materi'),
+        content: Text('Hapus materi "${materials[index].title}"?'),
         actions: [
           TextButton(
-            onPressed: () =>
-                Navigator.pop(context),
-            child:
-                const Text('Batal'),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Batal'),
           ),
           ElevatedButton(
             onPressed: () {
@@ -3091,8 +3011,7 @@ class _AdminMaterialPageState
               Navigator.pop(context);
               widget.onChanged();
             },
-            child:
-                const Text('Hapus'),
+            child: const Text('Hapus'),
           ),
         ],
       ),
@@ -3103,27 +3022,16 @@ class _AdminMaterialPageState
   Widget build(BuildContext context) {
     return SafeArea(
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding:
-                const EdgeInsets.fromLTRB(
-              20,
-              25,
-              20,
-              10,
-            ),
+            padding: const EdgeInsets.fromLTRB(20, 25, 20, 10),
             child: Row(
-              mainAxisAlignment:
-                  MainAxisAlignment.spaceBetween,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text(
                   'Kelola Materi',
-                  style: TextStyle(
-                    fontSize: 25,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
                 ),
                 FloatingActionButton.small(
                   onPressed: addMaterial,
@@ -3135,33 +3043,24 @@ class _AdminMaterialPageState
 
           Expanded(
             child: ListView.builder(
-              padding:
-                  const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(20),
               itemCount: materials.length,
               itemBuilder: (_, index) {
-                final material =
-                    materials[index];
+                final material = materials[index];
 
                 return Card(
                   child: ListTile(
                     leading: Icon(
                       material.icon,
-                      color: primaryColor,
+                      color: Theme.of(context).colorScheme.primary,
                     ),
-                    title: Text(
-                      material.title,
-                    ),
-                    subtitle: Text(
-                      material.category,
-                    ),
+                    title: Text(material.title),
+                    subtitle: Text(material.category),
                     trailing: IconButton(
                       onPressed: () {
                         deleteMaterial(index);
                       },
-                      icon: const Icon(
-                        Icons.delete_outline,
-                        color: Colors.red,
-                      ),
+                      icon: const Icon(Icons.delete_outline, color: Colors.red),
                     ),
                   ),
                 );
@@ -3184,39 +3083,23 @@ class AdminQuizPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: backgroundColor,
       body: SafeArea(
         child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Padding(
-              padding:
-                  EdgeInsets.fromLTRB(
-                20,
-                25,
-                20,
-                5,
-              ),
+              padding: EdgeInsets.fromLTRB(20, 25, 20, 5),
               child: Text(
                 'Kelola Quiz',
-                style: TextStyle(
-                  fontSize: 25,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
               ),
             ),
 
             const Padding(
-              padding:
-                  EdgeInsets.symmetric(
-                horizontal: 20,
-              ),
+              padding: EdgeInsets.symmetric(horizontal: 20),
               child: Text(
                 'Daftar soal yang tersedia.',
-                style: TextStyle(
-                  color: Colors.grey,
-                ),
+                style: TextStyle(color: Colors.grey),
               ),
             ),
 
@@ -3224,35 +3107,26 @@ class AdminQuizPage extends StatelessWidget {
 
             Expanded(
               child: ListView.builder(
-                padding:
-                    const EdgeInsets.all(20),
-                itemCount:
-                    quizQuestions.length,
+                padding: const EdgeInsets.all(20),
+                itemCount: quizQuestions.length,
                 itemBuilder: (_, index) {
-                  final question =
-                      quizQuestions[index];
+                  final question = quizQuestions[index];
 
                   return Card(
-                    margin:
-                        const EdgeInsets.only(
-                      bottom: 10,
-                    ),
+                    margin: const EdgeInsets.only(bottom: 10),
                     child: ListTile(
                       leading: CircleAvatar(
-                        backgroundColor:
-                            lightBlue,
+                        backgroundColor: Theme.of(context)
+                            .colorScheme
+                            .primaryContainer,
                         child: Text(
                           '${index + 1}',
-                          style:
-                              const TextStyle(
-                            color:
-                                primaryColor,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.primary,
                           ),
                         ),
                       ),
-                      title: Text(
-                        question.question,
-                      ),
+                      title: Text(question.question),
                       subtitle: Text(
                         '${question.options.length} pilihan jawaban',
                       ),
@@ -3279,36 +3153,21 @@ class AdminUserPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return SafeArea(
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Padding(
-            padding:
-                EdgeInsets.fromLTRB(
-              20,
-              25,
-              20,
-              5,
-            ),
+            padding: EdgeInsets.fromLTRB(20, 25, 20, 5),
             child: Text(
               'Data Pengguna',
-              style: TextStyle(
-                fontSize: 25,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
             ),
           ),
 
           const Padding(
-            padding:
-                EdgeInsets.symmetric(
-              horizontal: 20,
-            ),
+            padding: EdgeInsets.symmetric(horizontal: 20),
             child: Text(
               'Daftar pengguna aplikasi TechExplorer.',
-              style: TextStyle(
-                color: Colors.grey,
-              ),
+              style: TextStyle(color: Colors.grey),
             ),
           ),
 
@@ -3316,29 +3175,24 @@ class AdminUserPage extends StatelessWidget {
 
           Expanded(
             child: ListView.builder(
-              padding:
-                  const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(20),
               itemCount: users.length,
               itemBuilder: (_, index) {
                 final user = users[index];
 
                 return Card(
                   child: ListTile(
-                    leading:
-                        const CircleAvatar(
-                      backgroundColor:
-                          lightBlue,
+                    leading: CircleAvatar(
+                      backgroundColor: Theme.of(context)
+                          .colorScheme
+                          .primaryContainer,
                       child: Icon(
                         Icons.person,
-                        color: primaryColor,
+                        color: Theme.of(context).colorScheme.primary,
                       ),
                     ),
-                    title: Text(
-                      user['name'] ?? '',
-                    ),
-                    subtitle: Text(
-                      '${user['email']}\n${user['class']}',
-                    ),
+                    title: Text(user['name'] ?? ''),
+                    subtitle: Text('${user['email']}\n${user['class']}'),
                   ),
                 );
               },
@@ -3354,32 +3208,18 @@ class AdminUserPage extends StatelessWidget {
 // INPUT DECORATION
 // ============================================================
 
-InputDecoration inputDecoration(
-  String hint,
-  IconData icon,
-) {
+InputDecoration inputDecoration(String hint, IconData icon) {
   return InputDecoration(
     hintText: hint,
     prefixIcon: Icon(icon),
     filled: true,
-    fillColor: Colors.white,
     border: OutlineInputBorder(
-      borderRadius:
-          BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(14),
       borderSide: BorderSide.none,
     ),
     enabledBorder: OutlineInputBorder(
-      borderRadius:
-          BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(14),
       borderSide: BorderSide.none,
-    ),
-    focusedBorder: OutlineInputBorder(
-      borderRadius:
-          BorderRadius.circular(14),
-      borderSide: const BorderSide(
-        color: primaryColor,
-        width: 1.5,
-      ),
     ),
   );
 }
