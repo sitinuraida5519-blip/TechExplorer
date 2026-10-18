@@ -9,6 +9,14 @@ class FailingMaterialCatalogStore extends MaterialCatalogStore {
   Future<bool> save(List<MaterialData> catalog) async => false;
 }
 
+class FailingQuizQuestionStore extends QuizQuestionStore {
+  @override
+  Future<QuizQuestionSaveResult> add(
+    QuizQuestion question, {
+    required Iterable<QuizQuestion> existingQuestions,
+  }) async => QuizQuestionSaveResult.failed;
+}
+
 Future<void> startQuiz(
   WidgetTester tester, {
   QuizDifficulty difficulty = QuizDifficulty.easy,
@@ -20,6 +28,25 @@ Future<void> startQuiz(
   await tester.pump();
   await tester.ensureVisible(find.byKey(const ValueKey('start-quiz')));
   await tester.tap(find.byKey(const ValueKey('start-quiz')));
+  await tester.pump();
+}
+
+Future<void> fillQuizQuestionForm(
+  WidgetTester tester, {
+  String prompt = 'Pertanyaan admin baru?',
+}) async {
+  await tester.enterText(
+    find.byKey(const ValueKey('quiz-question-field')),
+    prompt,
+  );
+  for (var index = 0; index < 4; index++) {
+    await tester.enterText(
+      find.byKey(ValueKey('quiz-option-$index')),
+      'Jawaban ${String.fromCharCode(65 + index)}',
+    );
+  }
+  await tester.pump();
+  tester.testTextInput.hide();
   await tester.pump();
 }
 
@@ -378,6 +405,193 @@ void main() {
     );
     expect(find.text('Input tetap tersimpan'), findsOneWidget);
     expect(materials.first.title, originalTitle);
+  });
+
+  testWidgets('admin adds a persisted question that appears in its level quiz', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    SharedPreferences.setMockInitialValues({});
+    final originalQuestions = List<QuizQuestion>.of(quizQuestions);
+    addTearDown(() {
+      quizQuestions
+        ..clear()
+        ..addAll(originalQuestions);
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(body: AdminQuizPage()),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('add-quiz-question')));
+    await tester.pumpAndSettle();
+    await fillQuizQuestionForm(tester);
+
+    await tester.ensureVisible(find.byKey(const ValueKey('quiz-category-field')));
+    await tester.tap(find.byKey(const ValueKey('quiz-category-field')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Networking').last);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const ValueKey('quiz-difficulty-field')));
+    await tester.tap(find.byKey(const ValueKey('quiz-difficulty-field')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sedang').last);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('quiz-correct-answer-field')),
+    );
+    await tester.tap(find.byKey(const ValueKey('quiz-correct-answer-field')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Pilihan C').last);
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.byKey(const ValueKey('save-quiz-question')));
+    await tester.tap(find.byKey(const ValueKey('save-quiz-question')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final added = quizQuestions.singleWhere(
+      (question) => question.question == 'Pertanyaan admin baru?',
+    );
+    expect(added.options, ['Jawaban A', 'Jawaban B', 'Jawaban C', 'Jawaban D']);
+    expect(added.correctAnswer, 2);
+    expect(added.category, 'Networking');
+    expect(added.difficulty, QuizDifficulty.medium);
+    expect(added.isActive, isTrue);
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('quiz-question-search')),
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('quiz-question-search')),
+      added.question,
+    );
+    await tester.pump();
+    expect(
+      find.text('Networking · Sedang · Pilihan ganda · Aktif'),
+      findsOneWidget,
+    );
+
+    final storedQuestions = await QuizQuestionStore().load();
+    expect(storedQuestions, hasLength(1));
+    expect(storedQuestions!.single.id, added.id);
+
+    final historyCount = quizHistory.length;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: QuizPage(
+          questionBank: quizQuestions,
+          duration: const Duration(minutes: 2),
+        ),
+      ),
+    );
+    await startQuiz(tester, difficulty: QuizDifficulty.medium);
+    final mediumQuestions = questionsForDifficulty(
+      quizQuestions,
+      QuizDifficulty.medium,
+    );
+    expect(mediumQuestions.last.id, added.id);
+    for (var index = 0; index < mediumQuestions.length; index++) {
+      final question = mediumQuestions[index];
+      expect(find.text(question.question), findsOneWidget);
+      await tester.ensureVisible(
+        find.text(question.options[question.correctAnswer]),
+      );
+      await tester.tap(find.text(question.options[question.correctAnswer]));
+      await tester.pump();
+      final nextLabel = index == mediumQuestions.length - 1
+          ? 'Selesai'
+          : 'Soal Berikutnya';
+      await tester.ensureVisible(find.text(nextLabel));
+      await tester.pump(const Duration(milliseconds: 250));
+      await tester.tap(find.text(nextLabel));
+      await tester.pump();
+    }
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(QuizResultPage), findsOneWidget);
+    expect(find.text('100'), findsOneWidget);
+    expect(
+      find.text('${mediumQuestions.length} benar dari ${mediumQuestions.length} soal'),
+      findsOneWidget,
+    );
+    expect(quizHistory, hasLength(historyCount + 1));
+    expect(quizHistory.last['correct'], mediumQuestions.length);
+    expect(quizHistory.last['total'], mediumQuestions.length);
+    expect(quizHistory.last['difficulty'], 'medium');
+  });
+
+  testWidgets('new question form rejects missing question and choices', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final originalCount = quizQuestions.length;
+    await tester.pumpWidget(
+      const MaterialApp(home: Scaffold(body: AdminQuizPage())),
+    );
+    await tester.tap(find.byKey(const ValueKey('add-quiz-question')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('save-quiz-question')));
+    await tester.pump();
+
+    expect(find.text('Pertanyaan wajib diisi.'), findsOneWidget);
+    expect(find.text('Semua pilihan jawaban wajib diisi.'), findsNWidgets(4));
+    expect(find.byKey(const ValueKey('quiz-question-field')), findsOneWidget);
+    expect(quizQuestions, hasLength(originalCount));
+    expect(await QuizQuestionStore().load(), isEmpty);
+  });
+
+  testWidgets('failed question storage keeps form input and bank unchanged', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final originalCount = quizQuestions.length;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AdminQuizPage(questionStore: FailingQuizQuestionStore()),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('add-quiz-question')));
+    await tester.pumpAndSettle();
+    await fillQuizQuestionForm(tester, prompt: 'Soal gagal tersimpan');
+    await tester.tap(find.byKey(const ValueKey('save-quiz-question')));
+    await tester.pump();
+
+    expect(find.text('Soal gagal disimpan. Periksa penyimpanan lalu coba lagi.'), findsOneWidget);
+    expect(find.text('Soal gagal tersimpan'), findsOneWidget);
+    expect(quizQuestions, hasLength(originalCount));
+    expect(await QuizQuestionStore().load(), isEmpty);
+  });
+
+  test('question store rejects duplicate IDs and inactive questions are filtered', () async {
+    SharedPreferences.setMockInitialValues({});
+    final store = QuizQuestionStore();
+    final existing = quizQuestions.first;
+    final duplicate = QuizQuestion(
+      id: existing.id,
+      question: 'ID duplikat',
+      options: const ['A', 'B', 'C', 'D'],
+      correctAnswer: 0,
+    );
+    expect(
+      await store.add(duplicate, existingQuestions: quizQuestions),
+      QuizQuestionSaveResult.duplicateId,
+    );
+    expect(await store.load(), isEmpty);
+
+    final inactive = QuizQuestion(
+      question: 'Soal nonaktif',
+      options: const ['A', 'B', 'C', 'D'],
+      correctAnswer: 0,
+      difficulty: QuizDifficulty.easy,
+      isActive: false,
+    );
+    expect(questionsForDifficulty([inactive], QuizDifficulty.easy), isEmpty);
   });
 
   testWidgets('theme preference defaults to light and persists live changes', (

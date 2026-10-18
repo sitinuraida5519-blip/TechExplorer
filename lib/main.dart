@@ -15,6 +15,13 @@ Future<void> main() async {
       ..clear()
       ..addAll(storedMaterials);
   }
+  final storedQuestions = await quizQuestionStore.load();
+  if (storedQuestions != null) {
+    final knownIds = quizQuestions.map((question) => question.id).toSet();
+    for (final question in storedQuestions) {
+      if (knownIds.add(question.id)) quizQuestions.add(question);
+    }
+  }
   runApp(const MyApp());
 }
 
@@ -393,6 +400,11 @@ class MaterialHistoryStore extends ChangeNotifier {
 
 enum QuizDifficulty { easy, medium, hard }
 
+int _quizQuestionSequence = 0;
+
+String newQuizQuestionId() =>
+  'admin-question-${DateTime.now().microsecondsSinceEpoch}-${_quizQuestionSequence++}';
+
 extension QuizDifficultyDetails on QuizDifficulty {
   String get label => switch (this) {
     QuizDifficulty.easy => 'Mudah',
@@ -408,23 +420,149 @@ extension QuizDifficultyDetails on QuizDifficulty {
 }
 
 class QuizQuestion {
+  final String id;
   String question;
   List<String> options;
   int correctAnswer;
   QuizDifficulty difficulty;
+  String category;
+  String explanation;
+  bool isActive;
+  String type;
 
   QuizQuestion({
+    String? id,
     required this.question,
     required this.options,
     required this.correctAnswer,
     this.difficulty = QuizDifficulty.easy,
-  });
+    this.category = 'Computer Basics',
+    this.explanation = '',
+    this.isActive = true,
+    this.type = 'multipleChoice',
+  }) : id = id ?? 'bank-question-${_quizQuestionSequence++}';
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'question': question,
+    'options': options,
+    'correctAnswer': correctAnswer,
+    'difficulty': difficulty.name,
+    'category': category,
+    'explanation': explanation,
+    'isActive': isActive,
+    'type': type,
+  };
+
+  static QuizQuestion? fromJson(dynamic value) {
+    if (value is! Map) return null;
+    final id = value['id'];
+    final question = value['question'];
+    final optionsValue = value['options'];
+    final correctAnswer = value['correctAnswer'];
+    final difficultyName = value['difficulty'];
+    final category = value['category'];
+    final explanation = value['explanation'];
+    final isActive = value['isActive'];
+    final type = value['type'];
+    if (id is! String ||
+        id.isEmpty ||
+        question is! String ||
+        question.trim().isEmpty ||
+        optionsValue is! List ||
+        !optionsValue.every((option) => option is String) ||
+        optionsValue.length != 4 ||
+        correctAnswer is! int ||
+        correctAnswer < 0 ||
+        correctAnswer >= optionsValue.length ||
+        difficultyName is! String ||
+        category is! String ||
+        category.isEmpty ||
+        explanation is! String ||
+        isActive is! bool ||
+        type != 'multipleChoice') {
+      return null;
+    }
+    final difficulty = QuizDifficulty.values
+        .where((item) => item.name == difficultyName)
+        .firstOrNull;
+    if (difficulty == null) return null;
+    return QuizQuestion(
+      id: id,
+      question: question,
+      options: optionsValue.cast<String>(),
+      correctAnswer: correctAnswer,
+      difficulty: difficulty,
+      category: category,
+      explanation: explanation,
+      isActive: isActive,
+      type: type as String,
+    );
+  }
 }
 
 List<QuizQuestion> questionsForDifficulty(
   Iterable<QuizQuestion> questionBank,
   QuizDifficulty difficulty,
-) => questionBank.where((question) => question.difficulty == difficulty).toList();
+) => questionBank
+    .where((question) => question.isActive && question.difficulty == difficulty)
+    .toList();
+
+enum QuizQuestionSaveResult { saved, duplicateId, failed }
+
+class QuizQuestionStore {
+  static const String _storageKey = 'tech_explorer_admin_quiz_questions_v1';
+
+  Future<List<QuizQuestion>?> load() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final rawValue = preferences.getString(_storageKey);
+      if (rawValue == null) return [];
+      final decoded = jsonDecode(rawValue);
+      if (decoded is! List) return null;
+
+      final restored = <QuizQuestion>[];
+      final ids = <String>{};
+      for (final value in decoded) {
+        final question = QuizQuestion.fromJson(value);
+        if (question == null || !ids.add(question.id)) return null;
+        restored.add(question);
+      }
+      return restored;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<QuizQuestionSaveResult> add(
+    QuizQuestion question, {
+    required Iterable<QuizQuestion> existingQuestions,
+  }) async {
+    if (existingQuestions.any((item) => item.id == question.id)) {
+      return QuizQuestionSaveResult.duplicateId;
+    }
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final storedQuestions = await load();
+      if (storedQuestions == null) return QuizQuestionSaveResult.failed;
+      if (storedQuestions.any((item) => item.id == question.id)) {
+        return QuizQuestionSaveResult.duplicateId;
+      }
+      final saved = await preferences.setString(
+        _storageKey,
+        jsonEncode([
+          ...storedQuestions.map((item) => item.toJson()),
+          question.toJson(),
+        ]),
+      );
+      return saved ? QuizQuestionSaveResult.saved : QuizQuestionSaveResult.failed;
+    } catch (_) {
+      return QuizQuestionSaveResult.failed;
+    }
+  }
+}
+
+final QuizQuestionStore quizQuestionStore = QuizQuestionStore();
 
 // ============================================================
 // DATA MATERI TECH EXPLORER
@@ -730,6 +868,7 @@ List<QuizQuestion> quizQuestions = [
     options: ['RAM', 'Processor', 'Keyboard', 'Monitor'],
     correctAnswer: 1,
     difficulty: QuizDifficulty.easy,
+    category: 'Computer Basics',
   ),
 
   QuizQuestion(
@@ -742,6 +881,7 @@ List<QuizQuestion> quizQuestions = [
     ],
     correctAnswer: 0,
     difficulty: QuizDifficulty.easy,
+    category: 'Computer Basics',
   ),
 
   QuizQuestion(
@@ -750,6 +890,7 @@ List<QuizQuestion> quizQuestions = [
     options: ['Keyboard', 'Monitor', 'Router', 'Mouse'],
     correctAnswer: 2,
     difficulty: QuizDifficulty.medium,
+    category: 'Network Devices',
   ),
 
   QuizQuestion(
@@ -762,6 +903,7 @@ List<QuizQuestion> quizQuestions = [
     ],
     correctAnswer: 0,
     difficulty: QuizDifficulty.easy,
+    category: 'Networking',
   ),
 
   QuizQuestion(
@@ -769,6 +911,7 @@ List<QuizQuestion> quizQuestions = [
     options: ['Hardware', 'Software', 'Brainware', 'Network Device'],
     correctAnswer: 1,
     difficulty: QuizDifficulty.easy,
+    category: 'Software',
   ),
 
   QuizQuestion(
@@ -777,6 +920,7 @@ List<QuizQuestion> quizQuestions = [
     options: ['Switch', 'Monitor', 'Printer', 'Keyboard'],
     correctAnswer: 0,
     difficulty: QuizDifficulty.medium,
+    category: 'Network Devices',
   ),
 
   QuizQuestion(
@@ -789,6 +933,7 @@ List<QuizQuestion> quizQuestions = [
     ],
     correctAnswer: 0,
     difficulty: QuizDifficulty.easy,
+    category: 'Networking',
   ),
 
   QuizQuestion(
@@ -796,6 +941,7 @@ List<QuizQuestion> quizQuestions = [
     options: ['RAM', 'Access Point', 'Processor', 'Hard Disk'],
     correctAnswer: 1,
     difficulty: QuizDifficulty.easy,
+    category: 'Network Devices',
   ),
 
   QuizQuestion(
@@ -803,6 +949,7 @@ List<QuizQuestion> quizQuestions = [
     options: ['SSD', 'Keyboard', 'Monitor', 'Mouse'],
     correctAnswer: 0,
     difficulty: QuizDifficulty.easy,
+    category: 'Hardware',
   ),
 
   QuizQuestion(
@@ -811,6 +958,7 @@ List<QuizQuestion> quizQuestions = [
     options: ['copy', 'ping', 'delete', 'format'],
     correctAnswer: 1,
     difficulty: QuizDifficulty.medium,
+    category: 'Troubleshooting',
   ),
 
   QuizQuestion(
@@ -819,6 +967,7 @@ List<QuizQuestion> quizQuestions = [
     options: ['DNS', 'Default gateway', 'Nama komputer', 'Kecepatan switch'],
     correctAnswer: 1,
     difficulty: QuizDifficulty.hard,
+    category: 'Troubleshooting',
   ),
 
   QuizQuestion(
@@ -827,6 +976,7 @@ List<QuizQuestion> quizQuestions = [
     options: ['DHCP', 'DNS', 'Default gateway', 'Access point'],
     correctAnswer: 1,
     difficulty: QuizDifficulty.hard,
+    category: 'Troubleshooting',
   ),
 
   QuizQuestion(
@@ -835,6 +985,7 @@ List<QuizQuestion> quizQuestions = [
     options: ['Subnet mask', 'Nama host', 'DNS publik', 'SSID Wi-Fi'],
     correctAnswer: 0,
     difficulty: QuizDifficulty.hard,
+    category: 'Troubleshooting',
   ),
 ];
 
@@ -4048,69 +4199,417 @@ class _AdminMaterialPageState extends State<AdminMaterialPage> {
 // ADMIN QUIZ
 // ============================================================
 
-class AdminQuizPage extends StatelessWidget {
-  const AdminQuizPage({super.key});
+class AdminQuizPage extends StatefulWidget {
+  final QuizQuestionStore? questionStore;
+
+  const AdminQuizPage({super.key, this.questionStore});
+
+  @override
+  State<AdminQuizPage> createState() => _AdminQuizPageState();
+}
+
+class _AdminQuizPageState extends State<AdminQuizPage> {
+  final TextEditingController _searchController = TextEditingController();
+  QuizDifficulty? _difficultyFilter;
+  bool? _activeFilter;
+
+  QuizQuestionStore get _questionStore =>
+      widget.questionStore ?? quizQuestionStore;
+
+  Future<String?> _saveQuestion(QuizQuestion question) async {
+    final result = await _questionStore.add(
+      question,
+      existingQuestions: quizQuestions,
+    );
+    if (result == QuizQuestionSaveResult.duplicateId) {
+      return 'ID soal bentrok. Silakan coba simpan kembali.';
+    }
+    if (result != QuizQuestionSaveResult.saved) {
+      return 'Soal gagal disimpan. Periksa penyimpanan lalu coba lagi.';
+    }
+
+    quizQuestions.add(question);
+    if (mounted) setState(() {});
+    return null;
+  }
+
+  Future<void> _addQuestion() async {
+    final saved = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _QuizQuestionFormDialog(onSave: _saveQuestion),
+    );
+    if (saved == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Soal berhasil disimpan.')),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final query = _searchController.text.trim().toLowerCase();
+    final filteredQuestions = quizQuestions.where((question) {
+      final matchesQuery =
+          query.isEmpty ||
+          question.question.toLowerCase().contains(query) ||
+          question.category.toLowerCase().contains(query);
+      final matchesDifficulty =
+          _difficultyFilter == null ||
+          question.difficulty == _difficultyFilter;
+      final matchesStatus =
+          _activeFilter == null || question.isActive == _activeFilter;
+      return matchesQuery && matchesDifficulty && matchesStatus;
+    }).toList();
+
     return Scaffold(
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 25, 20, 5),
-              child: Text(
-                'Kelola Quiz',
-                style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Kelola Soal Kuis',
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                  ),
+                  FilledButton.icon(
+                    key: const ValueKey('add-quiz-question'),
+                    onPressed: _addQuestion,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Tambah Soal'),
+                  ),
+                ],
               ),
             ),
-
             Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20),
+              padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Text(
-                'Daftar soal yang tersedia.',
+                '${quizQuestions.length} soal dalam bank kuis',
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
             ),
-
-            const SizedBox(height: 15),
-
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.all(20),
-                itemCount: quizQuestions.length,
-                itemBuilder: (_, index) {
-                  final question = quizQuestions[index];
-
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    child: ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: Theme.of(context)
-                            .colorScheme
-                            .primaryContainer,
-                        child: Text(
-                          '${index + 1}',
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                        ),
-                      ),
-                      title: Text(question.question),
-                      subtitle: Text(
-                        '${question.options.length} pilihan jawaban',
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: TextField(
+                key: const ValueKey('quiz-question-search'),
+                controller: _searchController,
+                onChanged: (_) => setState(() {}),
+                decoration: inputDecoration(
+                  'Cari pertanyaan atau kategori...',
+                  Icons.search,
+                ),
+              ),
+            ),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                children: [
+                  ChoiceChip(
+                    label: const Text('Semua tingkat'),
+                    selected: _difficultyFilter == null,
+                    onSelected: (_) => setState(() => _difficultyFilter = null),
+                  ),
+                  for (final difficulty in QuizDifficulty.values) ...[
+                    const SizedBox(width: 8),
+                    ChoiceChip(
+                      label: Text(difficulty.label),
+                      selected: _difficultyFilter == difficulty,
+                      onSelected: (_) => setState(
+                        () => _difficultyFilter = difficulty,
                       ),
                     ),
-                  );
-                },
+                  ],
+                  const SizedBox(width: 16),
+                  ChoiceChip(
+                    label: const Text('Semua status'),
+                    selected: _activeFilter == null,
+                    onSelected: (_) => setState(() => _activeFilter = null),
+                  ),
+                  const SizedBox(width: 8),
+                  ChoiceChip(
+                    label: const Text('Aktif'),
+                    selected: _activeFilter == true,
+                    onSelected: (_) => setState(() => _activeFilter = true),
+                  ),
+                  const SizedBox(width: 8),
+                  ChoiceChip(
+                    label: const Text('Nonaktif'),
+                    selected: _activeFilter == false,
+                    onSelected: (_) => setState(() => _activeFilter = false),
+                  ),
+                ],
               ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+              child: Text(
+                '${filteredQuestions.length} soal ditampilkan',
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+            ),
+            Expanded(
+              child: filteredQuestions.isEmpty
+                  ? const Center(child: Text('Soal tidak ditemukan.'))
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(20),
+                      itemCount: filteredQuestions.length,
+                      itemBuilder: (context, index) {
+                        final question = filteredQuestions[index];
+                        final colorScheme = Theme.of(context).colorScheme;
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: colorScheme.primaryContainer,
+                              child: Text(
+                                '${index + 1}',
+                                style: TextStyle(color: colorScheme.primary),
+                              ),
+                            ),
+                            title: Text(question.question),
+                            subtitle: Text(
+                              '${question.category} · ${question.difficulty.label} · '
+                              'Pilihan ganda · ${question.isActive ? 'Aktif' : 'Nonaktif'}',
+                            ),
+                            isThreeLine: true,
+                          ),
+                        );
+                      },
+                    ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _QuizQuestionFormDialog extends StatefulWidget {
+  final Future<String?> Function(QuizQuestion question) onSave;
+
+  const _QuizQuestionFormDialog({required this.onSave});
+
+  @override
+  State<_QuizQuestionFormDialog> createState() =>
+      _QuizQuestionFormDialogState();
+}
+
+class _QuizQuestionFormDialogState extends State<_QuizQuestionFormDialog> {
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  final List<String> _options = List.filled(4, '');
+  String _question = '';
+  String _explanation = '';
+  String _category = categoryData.first['name'] as String;
+  QuizDifficulty _difficulty = QuizDifficulty.easy;
+  int _correctAnswer = 0;
+  bool _isActive = true;
+  bool _isSaving = false;
+  String? _saveError;
+
+  Future<void> _submit() async {
+    if (_isSaving || !(_formKey.currentState?.validate() ?? false)) return;
+    setState(() {
+      _isSaving = true;
+      _saveError = null;
+    });
+
+    final question = QuizQuestion(
+      id: newQuizQuestionId(),
+      question: _question.trim(),
+      options: _options.map((option) => option.trim()).toList(),
+      correctAnswer: _correctAnswer,
+      difficulty: _difficulty,
+      category: _category,
+      explanation: _explanation.trim(),
+      isActive: _isActive,
+    );
+    final error = await widget.onSave(question);
+    if (!mounted) return;
+    if (error != null) {
+      setState(() {
+        _isSaving = false;
+        _saveError = error;
+      });
+      return;
+    }
+    Navigator.pop(context, true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return AlertDialog(
+      title: const Text('Tambah Soal'),
+      content: SizedBox(
+        width: 520,
+        child: SingleChildScrollView(
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  key: const ValueKey('quiz-question-field'),
+                  initialValue: _question,
+                  onChanged: (value) => _question = value,
+                  textCapitalization: TextCapitalization.sentences,
+                  maxLines: 3,
+                  decoration: const InputDecoration(labelText: 'Pertanyaan'),
+                  validator: (value) => value == null || value.trim().isEmpty
+                      ? 'Pertanyaan wajib diisi.'
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  key: const ValueKey('quiz-category-field'),
+                  initialValue: _category,
+                  decoration: const InputDecoration(labelText: 'Kategori materi'),
+                  items: categoryData
+                      .map(
+                        (item) => DropdownMenuItem<String>(
+                          value: item['name'] as String,
+                          child: Text(item['name'] as String),
+                        ),
+                      )
+                      .toList(),
+                  validator: (value) => value == null || value.isEmpty
+                      ? 'Kategori materi wajib dipilih.'
+                      : null,
+                  onChanged: _isSaving
+                      ? null
+                      : (value) {
+                          if (value != null) setState(() => _category = value);
+                        },
+                ),
+                DropdownButtonFormField<QuizDifficulty>(
+                  key: const ValueKey('quiz-difficulty-field'),
+                  initialValue: _difficulty,
+                  decoration: const InputDecoration(labelText: 'Tingkat kesulitan'),
+                  items: QuizDifficulty.values
+                      .map(
+                        (difficulty) => DropdownMenuItem(
+                          value: difficulty,
+                          child: Text(difficulty.label),
+                        ),
+                      )
+                      .toList(),
+                  validator: (value) => value == null
+                      ? 'Tingkat kesulitan wajib dipilih.'
+                      : null,
+                  onChanged: _isSaving
+                      ? null
+                      : (value) {
+                          if (value != null) setState(() => _difficulty = value);
+                        },
+                ),
+                const ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.radio_button_checked),
+                  title: Text('Jenis soal'),
+                  subtitle: Text('Pilihan ganda, satu jawaban benar'),
+                ),
+                for (var index = 0; index < _options.length; index++)
+                  TextFormField(
+                    key: ValueKey('quiz-option-$index'),
+                    initialValue: _options[index],
+                    onChanged: (value) => _options[index] = value,
+                    enabled: !_isSaving,
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration: InputDecoration(
+                      labelText: 'Pilihan ${String.fromCharCode(65 + index)}',
+                    ),
+                    validator: (value) => value == null || value.trim().isEmpty
+                        ? 'Semua pilihan jawaban wajib diisi.'
+                        : null,
+                  ),
+                DropdownButtonFormField<int>(
+                  key: const ValueKey('quiz-correct-answer-field'),
+                  initialValue: _correctAnswer,
+                  decoration: const InputDecoration(labelText: 'Kunci jawaban'),
+                  items: List.generate(
+                    _options.length,
+                    (index) => DropdownMenuItem(
+                      value: index,
+                      child: Text('Pilihan ${String.fromCharCode(65 + index)}'),
+                    ),
+                  ),
+                  onChanged: _isSaving
+                      ? null
+                      : (value) {
+                          if (value != null) {
+                            setState(() => _correctAnswer = value);
+                          }
+                        },
+                ),
+                TextFormField(
+                  key: const ValueKey('quiz-explanation-field'),
+                  initialValue: _explanation,
+                  onChanged: (value) => _explanation = value,
+                  enabled: !_isSaving,
+                  maxLines: 3,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(
+                    labelText: 'Pembahasan (opsional)',
+                  ),
+                ),
+                SwitchListTile(
+                  key: const ValueKey('quiz-active-switch'),
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Soal aktif'),
+                  value: _isActive,
+                  onChanged: _isSaving
+                      ? null
+                      : (value) => setState(() => _isActive = value),
+                ),
+                if (_saveError != null)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      _saveError!,
+                      style: TextStyle(color: colorScheme.error),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          key: const ValueKey('cancel-quiz-question'),
+          onPressed: _isSaving ? null : () => Navigator.pop(context, false),
+          child: const Text('Batal'),
+        ),
+        FilledButton(
+          key: const ValueKey('save-quiz-question'),
+          onPressed: _isSaving ? null : _submit,
+          child: _isSaving
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Simpan Soal'),
+        ),
+      ],
     );
   }
 }
