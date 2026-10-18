@@ -4,6 +4,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter_application_1/main.dart';
 
+class FailingMaterialCatalogStore extends MaterialCatalogStore {
+  @override
+  Future<bool> save(List<MaterialData> catalog) async => false;
+}
+
 Future<void> startQuiz(
   WidgetTester tester, {
   QuizDifficulty difficulty = QuizDifficulty.easy,
@@ -193,6 +198,186 @@ void main() {
     expect(history.entries, isEmpty);
 
     history.dispose();
+  });
+
+  testWidgets('admin edit updates selected material and persists the catalog', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final originalCatalog = materials.map((item) => item.copyWith()).toList();
+    addTearDown(() {
+      materials
+        ..clear()
+        ..addAll(originalCatalog);
+      SharedPreferences.setMockInitialValues({});
+    });
+    final selected = materials[0];
+    final selectedId = selected.id;
+    final otherId = materials[1].id;
+    final otherTitle = materials[1].title;
+    var changeNotifications = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AdminMaterialPage(
+            onChanged: () => changeNotifications++,
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(ValueKey('edit-material-$selectedId')));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<TextFormField>(
+        find.byKey(const ValueKey('material-title-field')),
+      ).initialValue,
+      selected.title,
+    );
+    expect(
+      tester.widget<TextFormField>(
+        find.byKey(const ValueKey('material-content-field')),
+      ).initialValue,
+      selected.content,
+    );
+
+    await tester.enterText(
+      find.byKey(const ValueKey('material-title-field')),
+      'Judul Materi Diperbarui',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('material-description-field')),
+      'Deskripsi materi yang telah diperbarui.',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('material-content-field')),
+      'Isi materi terbaru.',
+    );
+    await tester.pump();
+    tester.testTextInput.hide();
+    await tester.pump();
+    await tester.ensureVisible(find.byKey(const ValueKey('save-material')));
+    await tester.tap(find.byKey(const ValueKey('save-material')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final updated = materials.singleWhere((item) => item.id == selectedId);
+    expect(updated.title, 'Judul Materi Diperbarui');
+    expect(updated.description, 'Deskripsi materi yang telah diperbarui.');
+    expect(updated.content, 'Isi materi terbaru.');
+    expect(materials.singleWhere((item) => item.id == otherId).title, otherTitle);
+    expect(changeNotifications, 1);
+
+    final restored = await MaterialCatalogStore().load();
+    expect(restored, isNotNull);
+    expect(restored!.length, originalCatalog.length);
+    expect(restored.singleWhere((item) => item.id == selectedId).title, updated.title);
+    expect(restored.singleWhere((item) => item.id == otherId).title, otherTitle);
+
+    final history = MaterialHistoryStore(userEmail: 'admin@example.com');
+    await history.load();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MaterialDetailPage(
+          material: updated,
+          bookmarks: <String>{},
+          historyStore: history,
+          onBookmarkChanged: () {},
+        ),
+      ),
+    );
+    expect(find.text(updated.title), findsOneWidget);
+    expect(find.text(updated.description), findsOneWidget);
+    expect(find.text(updated.content), findsOneWidget);
+    history.dispose();
+  });
+
+  testWidgets('edit validation and cancel preserve original material', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final originalCatalog = materials.map((item) => item.copyWith()).toList();
+    addTearDown(() {
+      materials
+        ..clear()
+        ..addAll(originalCatalog);
+      SharedPreferences.setMockInitialValues({});
+    });
+    final material = materials.first;
+    final originalTitle = material.title;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: AdminMaterialPage(onChanged: () {})),
+      ),
+    );
+    await tester.tap(find.byKey(ValueKey('edit-material-${material.id}')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('material-title-field')), '');
+    await tester.pump();
+    await tester.ensureVisible(find.byKey(const ValueKey('save-material')));
+    await tester.tap(find.byKey(const ValueKey('save-material')));
+    await tester.pump();
+    expect(find.text('Judul materi wajib diisi.'), findsOneWidget);
+    expect(materials.first.title, originalTitle);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('material-title-field')),
+      'Perubahan yang dibatalkan',
+    );
+    await tester.pump();
+    tester.testTextInput.hide();
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('cancel-material')));
+    await tester.pump();
+    expect(find.text('Buang perubahan?'), findsOneWidget);
+    await tester.tap(find.text('Buang perubahan'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(materials.first.title, originalTitle);
+    expect(find.text('Edit Materi'), findsNothing);
+  });
+
+  testWidgets('failed material persistence keeps the edit form and input', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final material = materials.first;
+    final originalTitle = material.title;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AdminMaterialPage(
+            onChanged: () {},
+            catalogStore: FailingMaterialCatalogStore(),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(ValueKey('edit-material-${material.id}')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('material-title-field')),
+      'Input tetap tersimpan',
+    );
+    await tester.pump();
+    tester.testTextInput.hide();
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('save-material')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text('Edit Materi'), findsOneWidget);
+    expect(
+      find.text(
+        'Perubahan belum tersimpan. Periksa penyimpanan lalu coba lagi.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Input tetap tersimpan'), findsOneWidget);
+    expect(materials.first.title, originalTitle);
   });
 
   testWidgets('theme preference defaults to light and persists live changes', (

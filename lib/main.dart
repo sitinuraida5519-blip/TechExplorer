@@ -9,6 +9,12 @@ final ThemeController appThemeController = ThemeController();
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await appThemeController.load();
+  final storedMaterials = await materialCatalogStore.load();
+  if (storedMaterials != null) {
+    materials
+      ..clear()
+      ..addAll(storedMaterials);
+  }
   runApp(const MyApp());
 }
 
@@ -125,6 +131,13 @@ ThemeData buildAppTheme(Brightness brightness) {
 // MODEL MATERI
 // ============================================================
 
+IconData _materialIconForCodePoint(int codePoint) {
+  for (final material in materials) {
+    if (material.icon.codePoint == codePoint) return material.icon;
+  }
+  return Icons.menu_book;
+}
+
 class MaterialData {
   final String id;
   String title;
@@ -143,7 +156,104 @@ class MaterialData {
     required this.importantPoints,
     required this.icon,
   });
+
+  MaterialData copyWith({
+    String? title,
+    String? category,
+    String? description,
+    String? content,
+    String? importantPoints,
+    IconData? icon,
+  }) => MaterialData(
+    id: id,
+    title: title ?? this.title,
+    category: category ?? this.category,
+    description: description ?? this.description,
+    content: content ?? this.content,
+    importantPoints: importantPoints ?? this.importantPoints,
+    icon: icon ?? this.icon,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'title': title,
+    'category': category,
+    'description': description,
+    'content': content,
+    'importantPoints': importantPoints,
+    'iconCodePoint': icon.codePoint,
+    'iconFontFamily': icon.fontFamily,
+    'iconFontPackage': icon.fontPackage,
+    'iconMatchTextDirection': icon.matchTextDirection,
+  };
+
+  static MaterialData? fromJson(dynamic value) {
+    if (value is! Map) return null;
+    final id = value['id'];
+    final title = value['title'];
+    final category = value['category'];
+    final description = value['description'];
+    final content = value['content'];
+    final importantPoints = value['importantPoints'];
+    final iconCodePoint = value['iconCodePoint'];
+    if (id is! String ||
+        title is! String ||
+        category is! String ||
+        description is! String ||
+        content is! String ||
+        importantPoints is! String ||
+        iconCodePoint is! int) {
+      return null;
+    }
+    return MaterialData(
+      id: id,
+      title: title,
+      category: category,
+      description: description,
+      content: content,
+      importantPoints: importantPoints,
+      icon: _materialIconForCodePoint(iconCodePoint),
+    );
+  }
 }
+
+class MaterialCatalogStore {
+  static const String _storageKey = 'tech_explorer_material_catalog_v1';
+
+  Future<List<MaterialData>?> load() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final rawValue = preferences.getString(_storageKey);
+      if (rawValue == null) return null;
+      final decoded = jsonDecode(rawValue);
+      if (decoded is! List) return null;
+
+      final restored = <MaterialData>[];
+      for (final value in decoded) {
+        final material = MaterialData.fromJson(value);
+        if (material == null) return null;
+        restored.add(material);
+      }
+      return restored;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<bool> save(List<MaterialData> catalog) async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      return await preferences.setString(
+        _storageKey,
+        jsonEncode(catalog.map((material) => material.toJson()).toList()),
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+}
+
+final MaterialCatalogStore materialCatalogStore = MaterialCatalogStore();
 
 class MaterialHistoryEntry {
   final String materialId;
@@ -3555,133 +3665,309 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
 class AdminMaterialPage extends StatefulWidget {
   final VoidCallback onChanged;
+  final MaterialCatalogStore? catalogStore;
 
-  const AdminMaterialPage({super.key, required this.onChanged});
+  const AdminMaterialPage({
+    super.key,
+    required this.onChanged,
+    this.catalogStore,
+  });
 
   @override
   State<AdminMaterialPage> createState() => _AdminMaterialPageState();
 }
 
 class _AdminMaterialPageState extends State<AdminMaterialPage> {
-  void addMaterial() {
-    final titleController = TextEditingController();
-    final descriptionController = TextEditingController();
-    final contentController = TextEditingController();
+  MaterialCatalogStore get _catalogStore =>
+      widget.catalogStore ?? materialCatalogStore;
 
-    String category = 'Hardware';
-
-    showDialog(
-      context: context,
-      builder: (_) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('Tambah Materi'),
-              content: SingleChildScrollView(
-                child: Column(
-                  children: [
-                    TextField(
-                      controller: titleController,
-                      decoration: const InputDecoration(
-                        labelText: 'Judul Materi',
-                      ),
-                    ),
-
-                    TextField(
-                      controller: descriptionController,
-                      decoration: const InputDecoration(labelText: 'Deskripsi'),
-                    ),
-
-                    TextField(
-                      controller: contentController,
-                      maxLines: 5,
-                      decoration: const InputDecoration(
-                        labelText: 'Pembahasan',
-                      ),
-                    ),
-
-                    DropdownButtonFormField<String>(
-                      value: category,
-                      decoration: const InputDecoration(labelText: 'Kategori'),
-                      items: categoryData
-                          .map(
-                            (item) => DropdownMenuItem(
-                              value: item['name'] as String,
-                              child: Text(item['name'] as String),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (value) {
-                        setDialogState(() {
-                          category = value!;
-                        });
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                  },
-                  child: const Text('Batal'),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    if (titleController.text.isEmpty ||
-                        descriptionController.text.isEmpty ||
-                        contentController.text.isEmpty) {
-                      return;
-                    }
-
-                    materials.add(
-                      MaterialData(
-                        id: 'admin-material-${DateTime.now().microsecondsSinceEpoch}',
-                        title: titleController.text,
-                        category: category,
-                        description: descriptionController.text,
-                        content: contentController.text,
-                        importantPoints: 'Materi ditambahkan oleh admin.',
-                        icon: Icons.menu_book,
-                      ),
-                    );
-
-                    Navigator.pop(context);
-
-                    setState(() {});
-
-                    widget.onChanged();
-                  },
-                  child: const Text('Simpan'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
+  Future<bool> _saveCatalog(List<MaterialData> catalog) async {
+    if (!await _catalogStore.save(catalog)) return false;
+    materials
+      ..clear()
+      ..addAll(catalog);
+    if (mounted) {
+      setState(() {});
+      widget.onChanged();
+    }
+    return true;
   }
 
-  void deleteMaterial(int index) {
-    showDialog(
+  void addMaterial() => _showMaterialForm();
+
+  void editMaterial(MaterialData material) =>
+      _showMaterialForm(material: material);
+
+  Future<void> _showMaterialForm({MaterialData? material}) async {
+    final pageContext = context;
+    var title = material?.title ?? '';
+    var description = material?.description ?? '';
+    var content = material?.content ?? '';
+    var importantPoints =
+        material?.importantPoints ?? 'Materi ditambahkan oleh admin.';
+    final formKey = GlobalKey<FormState>();
+    final originalCategory = material?.category ?? 'Hardware';
+    final categories = categoryData
+        .map((item) => item['name'] as String)
+        .toSet()
+        .toList();
+    if (!categories.contains(originalCategory)) {
+      categories.insert(0, originalCategory);
+    }
+    var category = originalCategory;
+    var isSaving = false;
+    String? saveError;
+
+    bool hasChanges() =>
+      title != (material?.title ?? '') ||
+      description != (material?.description ?? '') ||
+      content != (material?.content ?? '') ||
+      importantPoints !=
+            (material?.importantPoints ?? 'Materi ditambahkan oleh admin.') ||
+        category != originalCategory;
+
+    await showDialog<void>(
+      context: pageContext,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(material == null ? 'Tambah Materi' : 'Edit Materi'),
+          content: SingleChildScrollView(
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    key: const ValueKey('material-title-field'),
+                    initialValue: title,
+                    onChanged: (value) => title = value,
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration: const InputDecoration(labelText: 'Judul Materi'),
+                    validator: (value) => value == null || value.trim().isEmpty
+                        ? 'Judul materi wajib diisi.'
+                        : null,
+                  ),
+                  TextFormField(
+                    key: const ValueKey('material-description-field'),
+                    initialValue: description,
+                    onChanged: (value) => description = value,
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration: const InputDecoration(labelText: 'Deskripsi'),
+                    validator: (value) => value == null || value.trim().isEmpty
+                        ? 'Deskripsi wajib diisi.'
+                        : null,
+                  ),
+                  TextFormField(
+                    key: const ValueKey('material-content-field'),
+                    initialValue: content,
+                    onChanged: (value) => content = value,
+                    textCapitalization: TextCapitalization.sentences,
+                    maxLines: 5,
+                    decoration: const InputDecoration(labelText: 'Pembahasan'),
+                    validator: (value) => value == null || value.trim().isEmpty
+                        ? 'Pembahasan wajib diisi.'
+                        : null,
+                  ),
+                  TextFormField(
+                    key: const ValueKey('material-important-points-field'),
+                    initialValue: importantPoints,
+                    onChanged: (value) => importantPoints = value,
+                    textCapitalization: TextCapitalization.sentences,
+                    maxLines: 3,
+                    decoration: const InputDecoration(labelText: 'Poin Penting'),
+                  ),
+                  DropdownButtonFormField<String>(
+                    key: const ValueKey('material-category-field'),
+                    initialValue: category,
+                    decoration: const InputDecoration(labelText: 'Kategori'),
+                    items: categories
+                        .map(
+                          (value) => DropdownMenuItem(
+                            value: value,
+                            child: Text(value),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setDialogState(() {
+                        category = value;
+                      });
+                    },
+                  ),
+                  if (saveError != null) ...[
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        saveError!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              key: const ValueKey('cancel-material'),
+              onPressed: isSaving
+                  ? null
+                  : () async {
+                      if (hasChanges()) {
+                        final discard = await showDialog<bool>(
+                          context: context,
+                          builder: (confirmationContext) => AlertDialog(
+                            title: const Text('Buang perubahan?'),
+                            content: const Text(
+                              'Perubahan yang belum disimpan akan hilang.',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(
+                                  confirmationContext,
+                                  false,
+                                ),
+                                child: const Text('Lanjut edit'),
+                              ),
+                              FilledButton(
+                                onPressed: () => Navigator.pop(
+                                  confirmationContext,
+                                  true,
+                                ),
+                                child: const Text('Buang perubahan'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (discard != true) return;
+                      }
+                      if (dialogContext.mounted) {
+                        Navigator.pop(dialogContext);
+                      }
+                    },
+              child: const Text('Batal'),
+            ),
+            ElevatedButton(
+              key: const ValueKey('save-material'),
+              onPressed: isSaving
+                  ? null
+                  : () async {
+                      if (!(formKey.currentState?.validate() ?? false)) return;
+                      setDialogState(() {
+                        isSaving = true;
+                        saveError = null;
+                      });
+
+                      final updatedMaterial = material == null
+                          ? MaterialData(
+                              id: 'admin-material-${DateTime.now().microsecondsSinceEpoch}',
+                              title: title.trim(),
+                              category: category,
+                                description: description.trim(),
+                                content: content.trim(),
+                                importantPoints: importantPoints.trim(),
+                              icon: Icons.menu_book,
+                            )
+                          : material.copyWith(
+                              title: title.trim(),
+                              category: category,
+                                description: description.trim(),
+                                content: content.trim(),
+                                importantPoints: importantPoints.trim(),
+                            );
+                      final updatedCatalog = List<MaterialData>.of(materials);
+                      final existingIndex = material == null
+                          ? -1
+                          : updatedCatalog.indexWhere(
+                              (item) => item.id == material.id,
+                            );
+                      if (material != null && existingIndex == -1) {
+                        setDialogState(() {
+                          isSaving = false;
+                          saveError = 'Materi tidak lagi tersedia.';
+                        });
+                        return;
+                      }
+                      if (existingIndex == -1) {
+                        updatedCatalog.add(updatedMaterial);
+                      } else {
+                        updatedCatalog[existingIndex] = updatedMaterial;
+                      }
+
+                      final saved = await _saveCatalog(updatedCatalog);
+                      if (!saved) {
+                        if (!dialogContext.mounted) return;
+                        setDialogState(() {
+                          isSaving = false;
+                          saveError =
+                              'Perubahan belum tersimpan. Periksa penyimpanan lalu coba lagi.';
+                        });
+                        return;
+                      }
+
+                      if (dialogContext.mounted) {
+                        Navigator.pop(dialogContext);
+                      }
+                      if (!pageContext.mounted) return;
+                      ScaffoldMessenger.of(pageContext).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            material == null
+                                ? 'Materi berhasil ditambahkan.'
+                                : 'Perubahan materi berhasil disimpan.',
+                          ),
+                        ),
+                      );
+                    },
+              child: isSaving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(
+                      material == null ? 'Simpan' : 'Simpan Perubahan',
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+  }
+
+  Future<void> deleteMaterial(MaterialData material) async {
+    await showDialog<void>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Hapus Materi'),
-        content: Text('Hapus materi "${materials[index].title}"?'),
+        content: Text('Hapus materi "${material.title}"?'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Batal'),
           ),
           ElevatedButton(
-            onPressed: () {
-              setState(() {
-                materials.removeAt(index);
-              });
-
-              Navigator.pop(context);
-              widget.onChanged();
+            onPressed: () async {
+              final updatedCatalog = materials
+                  .where((item) => item.id != material.id)
+                  .toList();
+              if (!await _saveCatalog(updatedCatalog)) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Materi gagal dihapus karena penyimpanan gagal.'),
+                    ),
+                  );
+                }
+                return;
+              }
+              if (dialogContext.mounted) Navigator.pop(dialogContext);
             },
             child: const Text('Hapus'),
           ),
@@ -3728,11 +4014,24 @@ class _AdminMaterialPageState extends State<AdminMaterialPage> {
                     ),
                     title: Text(material.title),
                     subtitle: Text(material.category),
-                    trailing: IconButton(
-                      onPressed: () {
-                        deleteMaterial(index);
-                      },
-                      icon: const Icon(Icons.delete_outline, color: Colors.red),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          key: ValueKey('edit-material-${material.id}'),
+                          tooltip: 'Edit materi ${material.title}',
+                          onPressed: () => editMaterial(material),
+                          icon: const Icon(Icons.edit_outlined),
+                        ),
+                        IconButton(
+                          tooltip: 'Hapus materi ${material.title}',
+                          onPressed: () => deleteMaterial(material),
+                          icon: const Icon(
+                            Icons.delete_outline,
+                            color: Colors.red,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 );
