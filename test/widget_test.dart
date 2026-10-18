@@ -111,31 +111,25 @@ void main() {
     await appThemeController.load();
     expect(appThemeController.themeMode, ThemeMode.light);
 
-    await tester.pumpWidget(
-      AnimatedBuilder(
-        animation: appThemeController,
-        builder: (context, _) => MaterialApp(
-          theme: buildAppTheme(Brightness.light),
-          darkTheme: buildAppTheme(Brightness.dark),
-          themeMode: appThemeController.themeMode,
-          home: const Scaffold(body: ThemeModeTile()),
-        ),
-      ),
-    );
+    await tester.pumpWidget(const TechExplorerApp());
+    expect(Theme.of(tester.element(find.byType(Scaffold))).brightness, Brightness.light);
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pumpAndSettle();
+    expect(find.byType(LoginPage), findsOneWidget);
 
-    expect(
-      Theme.of(tester.element(find.byType(Scaffold))).brightness,
-      Brightness.light,
-    );
+    await tester.ensureVisible(find.byType(Switch));
+    await tester.pumpAndSettle();
     await tester.tap(find.byType(Switch));
     await tester.pumpAndSettle();
-
-    expect(
-      Theme.of(tester.element(find.byType(Scaffold))).brightness,
-      Brightness.dark,
-    );
+    expect(Theme.of(tester.element(find.byType(LoginPage))).brightness, Brightness.dark);
     final preferences = await SharedPreferences.getInstance();
     expect(preferences.getString('tech_explorer_theme'), 'dark');
+
+    await tester.tap(find.text('Registrasi'));
+    await tester.pumpAndSettle();
+    expect(Theme.of(tester.element(find.byType(RegisterPage))).brightness, Brightness.dark);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
 
     final restoredController = ThemeController();
     await restoredController.load();
@@ -145,6 +139,7 @@ void main() {
     await tester.tap(find.byType(Switch));
     await tester.pumpAndSettle();
     expect(preferences.getString('tech_explorer_theme'), 'light');
+    expect(Theme.of(tester.element(find.byType(LoginPage))).brightness, Brightness.light);
     await appThemeController.setDarkMode(false);
   });
 }

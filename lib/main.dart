@@ -723,8 +723,10 @@ class ThemeModeTile extends StatelessWidget {
         isDark ? Icons.dark_mode_outlined : Icons.light_mode_outlined,
         color: colorScheme.primary,
       ),
-      title: const Text('Mode Terang / Mode Gelap'),
-      subtitle: Text('Aktif: ${isDark ? 'Mode Gelap' : 'Mode Terang'}'),
+      title: Text(isDark ? 'Mode Gelap' : 'Mode Terang'),
+      subtitle: Text(
+        'Beralih ke ${isDark ? 'Mode Terang' : 'Mode Gelap'}',
+      ),
       value: isDark,
       onChanged: appThemeController.setDarkMode,
     );
@@ -759,8 +761,9 @@ class _SplashScreenState extends State<SplashScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: darkBlue,
+      backgroundColor: colorScheme.primary,
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -769,18 +772,18 @@ class _SplashScreenState extends State<SplashScreen> {
               width: 105,
               height: 105,
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: colorScheme.onPrimary,
                 borderRadius: BorderRadius.circular(25),
               ),
-              child: const Icon(Icons.computer, size: 60, color: primaryColor),
+              child: Icon(Icons.computer, size: 60, color: colorScheme.primary),
             ),
 
             const SizedBox(height: 25),
 
-            const Text(
+            Text(
               'TechExplorer',
               style: TextStyle(
-                color: Colors.white,
+                color: colorScheme.onPrimary,
                 fontSize: 32,
                 fontWeight: FontWeight.bold,
               ),
@@ -788,15 +791,15 @@ class _SplashScreenState extends State<SplashScreen> {
 
             const SizedBox(height: 8),
 
-            const Text(
+            Text(
               'Belajar Teknik Komputer dan Jaringan',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white70, fontSize: 14),
+              style: TextStyle(color: colorScheme.onPrimary, fontSize: 14),
             ),
 
             const SizedBox(height: 35),
 
-            const CircularProgressIndicator(color: Colors.white),
+            CircularProgressIndicator(color: colorScheme.onPrimary),
           ],
         ),
       ),
@@ -907,10 +910,12 @@ class _LoginPageState extends State<LoginPage> {
 
               const SizedBox(height: 8),
 
-              const Text(
+              Text(
                 'Masuk untuk mulai belajar bersama TechExplorer.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
 
               const SizedBox(height: 40),
@@ -1279,9 +1284,11 @@ class _HomePageState extends State<HomePage> {
 
             const SizedBox(height: 5),
 
-            const Text(
+            Text(
               'Siap melanjutkan pembelajaran hari ini?',
-              style: TextStyle(color: Colors.grey),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
 
             const SizedBox(height: 25),
@@ -1616,11 +1623,13 @@ class _LearnPageState extends State<LearnPage> {
             ),
           ),
 
-          const Padding(
+          Padding(
             padding: EdgeInsets.symmetric(horizontal: 20),
             child: Text(
               'Pelajari materi dasar Teknik Komputer dan Jaringan.',
-              style: TextStyle(color: Colors.grey),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
 
@@ -1965,9 +1974,9 @@ class _MaterialDetailPageState extends State<MaterialDetailPage> {
 
             Text(
               widget.material.description,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 16,
-                color: Colors.grey,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 height: 1.5,
               ),
             ),
@@ -2145,13 +2154,17 @@ class MaterialHistoryPage extends StatelessWidget {
             return const Center(child: CircularProgressIndicator());
           }
           if (entries.isEmpty) {
-            return const Center(
+            return Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.history, size: 56, color: Colors.grey),
-                  SizedBox(height: 12),
-                  Text('Belum ada materi yang dipelajari'),
+                  Icon(
+                    Icons.history,
+                    size: 56,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('Belum ada materi yang dipelajari'),
                 ],
               ),
             );
@@ -2234,11 +2247,13 @@ class BookmarkPage extends StatelessWidget {
             ),
           ),
 
-          const Padding(
+          Padding(
             padding: EdgeInsets.symmetric(horizontal: 20),
             child: Text(
               'Materi yang kamu simpan.',
-              style: TextStyle(color: Colors.grey),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
 
@@ -2246,17 +2261,19 @@ class BookmarkPage extends StatelessWidget {
 
           Expanded(
             child: savedMaterials.isEmpty
-                ? const Center(
+                ? Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(
                           Icons.bookmark_border,
                           size: 70,
-                          color: Colors.grey,
+                            color: Theme.of(context)
+                              .colorScheme
+                              .onSurfaceVariant,
                         ),
-                        SizedBox(height: 15),
-                        Text('Belum ada materi yang disimpan.'),
+                        const SizedBox(height: 15),
+                        const Text('Belum ada materi yang disimpan.'),
                       ],
                     ),
                   )
@@ -2529,7 +2546,9 @@ class QuizResultPage extends StatelessWidget {
 
               Text(
                 '$score benar dari $total soal',
-                style: const TextStyle(color: Colors.grey),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
 
               const SizedBox(height: 20),
@@ -2606,7 +2625,12 @@ class ProfilePage extends StatelessWidget {
               style: const TextStyle(fontSize: 23, fontWeight: FontWeight.bold),
             ),
 
-            Text(email, style: const TextStyle(color: Colors.grey)),
+            Text(
+              email,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
 
             const SizedBox(height: 30),
 
@@ -2770,9 +2794,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
               ],
             ),
 
-            const Text(
+            Text(
               'Kelola konten aplikasi TechExplorer.',
-              style: TextStyle(color: Colors.grey),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
 
             const SizedBox(height: 12),
@@ -2870,7 +2896,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
             value,
             style: const TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
           ),
-          Text(title, style: const TextStyle(color: Colors.grey)),
+          Text(
+            title,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
         ],
       ),
     );
@@ -3095,11 +3126,13 @@ class AdminQuizPage extends StatelessWidget {
               ),
             ),
 
-            const Padding(
+            Padding(
               padding: EdgeInsets.symmetric(horizontal: 20),
               child: Text(
                 'Daftar soal yang tersedia.',
-                style: TextStyle(color: Colors.grey),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
 
@@ -3163,11 +3196,13 @@ class AdminUserPage extends StatelessWidget {
             ),
           ),
 
-          const Padding(
+          Padding(
             padding: EdgeInsets.symmetric(horizontal: 20),
             child: Text(
               'Daftar pengguna aplikasi TechExplorer.',
-              style: TextStyle(color: Colors.grey),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
 
