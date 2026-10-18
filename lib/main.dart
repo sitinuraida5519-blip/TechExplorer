@@ -2349,11 +2349,14 @@ class QuizPage extends StatefulWidget {
 class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
   int currentQuestion = 0;
   int score = 0;
-  int? selectedAnswer;
+  final Map<int, int> answers = {};
   late DateTime _deadline;
   late Duration _remainingTime;
   Timer? _countdownTimer;
   bool _isFinishing = false;
+  bool _isFinishDialogOpen = false;
+
+  int? get selectedAnswer => answers[currentQuestion];
 
   @override
   void initState() {
@@ -2392,17 +2395,22 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
 
   void _finishQuiz({
     required bool timedOut,
-    bool currentAnswerAlreadyScored = false,
   }) {
     if (_isFinishing) return;
     _isFinishing = true;
     _countdownTimer?.cancel();
 
-    if (!currentAnswerAlreadyScored &&
-        selectedAnswer == quizQuestions[currentQuestion].correctAnswer) {
-      score++;
+    if (_isFinishDialogOpen) {
+      _isFinishDialogOpen = false;
+      Navigator.of(context).pop();
     }
 
+    score = answers.entries
+        .where(
+          (entry) =>
+              entry.value == quizQuestions[entry.key].correctAnswer,
+        )
+        .length;
     final finalScore = ((score / quizQuestions.length) * 100).round();
     quizHistory.add({
       'score': finalScore,
@@ -2435,32 +2443,63 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
     if (_isFinishing) return;
     if (_expireIfNeeded()) return;
     setState(() {
-      selectedAnswer = answer;
+      answers[currentQuestion] = answer;
     });
   }
 
   void nextQuestion() {
     if (_isFinishing) return;
     if (_expireIfNeeded()) return;
-    if (selectedAnswer == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Pilih jawaban terlebih dahulu.')),
-      );
-      return;
-    }
-
-    if (selectedAnswer == quizQuestions[currentQuestion].correctAnswer) {
-      score++;
-    }
 
     if (currentQuestion < quizQuestions.length - 1) {
       setState(() {
         currentQuestion++;
-        selectedAnswer = null;
       });
     } else {
-      _finishQuiz(timedOut: false, currentAnswerAlreadyScored: true);
+      _requestFinishQuiz();
     }
+  }
+
+  void previousQuestion() {
+    if (_isFinishing || _expireIfNeeded() || currentQuestion == 0) return;
+    setState(() => currentQuestion--);
+  }
+
+  void goToQuestion(int index) {
+    if (_isFinishing || _expireIfNeeded() || index == currentQuestion) return;
+    setState(() => currentQuestion = index);
+  }
+
+  Future<void> _requestFinishQuiz() async {
+    if (_isFinishing || _isFinishDialogOpen || _expireIfNeeded()) return;
+
+    if (answers.length < quizQuestions.length) {
+      _isFinishDialogOpen = true;
+      final shouldFinish = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Masih ada soal belum dijawab'),
+          content: Text(
+            'Kamu baru menjawab ${answers.length} dari '
+            '${quizQuestions.length} soal. Tetap kumpulkan kuis?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Kembali'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Kumpulkan'),
+            ),
+          ],
+        ),
+      );
+      _isFinishDialogOpen = false;
+      if (!mounted || _isFinishing || shouldFinish != true) return;
+    }
+
+    _finishQuiz(timedOut: false);
   }
 
   @override
@@ -2504,7 +2543,11 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
               value: (currentQuestion + 1) / quizQuestions.length,
             ),
 
-            const SizedBox(height: 30),
+            const SizedBox(height: 16),
+
+            _buildQuestionNavigation(context),
+
+            const SizedBox(height: 24),
 
             Text(
               question.question,
@@ -2524,6 +2567,7 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
                 margin: const EdgeInsets.only(bottom: 12),
                 width: double.infinity,
                 child: OutlinedButton(
+                  key: ValueKey('answer-$currentQuestion-$index'),
                   onPressed: () {
                     chooseAnswer(index);
                   },
@@ -2557,19 +2601,36 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
               );
             }),
 
-            const SizedBox(height: 30),
+            const SizedBox(height: 18),
 
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: ElevatedButton(
-                onPressed: _isFinishing ? null : nextQuestion,
-                child: Text(
-                  currentQuestion == quizQuestions.length - 1
-                      ? 'Selesai'
-                      : 'Soal Berikutnya',
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: currentQuestion == 0 || _isFinishing
+                        ? null
+                        : previousQuestion,
+                    icon: const Icon(Icons.chevron_left),
+                    label: const Text('Sebelumnya'),
+                  ),
                 ),
-              ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _isFinishing ? null : nextQuestion,
+                    icon: Icon(
+                      currentQuestion == quizQuestions.length - 1
+                          ? Icons.check
+                          : Icons.chevron_right,
+                    ),
+                    label: Text(
+                      currentQuestion == quizQuestions.length - 1
+                          ? 'Selesai'
+                          : 'Soal Berikutnya',
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -2623,6 +2684,158 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildQuestionNavigation(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final answeredCount = answers.length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Navigasi Soal',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            Text(
+              'Terjawab: $answeredCount dari ${quizQuestions.length}',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+            maxCrossAxisExtent: 52,
+            mainAxisSpacing: 8,
+            crossAxisSpacing: 8,
+            childAspectRatio: 1,
+          ),
+          itemCount: quizQuestions.length,
+          itemBuilder: (context, index) {
+            final isCurrent = index == currentQuestion;
+            final isAnswered = answers.containsKey(index);
+            final backgroundColor = isCurrent
+                ? colorScheme.primary
+                : isAnswered
+                    ? colorScheme.secondaryContainer
+                    : colorScheme.surface;
+            final foregroundColor = isCurrent
+                ? colorScheme.onPrimary
+                : isAnswered
+                    ? colorScheme.onSecondaryContainer
+                    : colorScheme.onSurfaceVariant;
+
+            return Semantics(
+              button: true,
+              selected: isCurrent,
+              label:
+                  'Soal ${index + 1}${isAnswered ? ', sudah dijawab' : ', belum dijawab'}${isCurrent ? ', saat ini' : ''}',
+              child: Material(
+                color: backgroundColor,
+                borderRadius: BorderRadius.circular(10),
+                child: InkWell(
+                  key: ValueKey('question-number-$index'),
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: _isFinishing ? null : () => goToQuestion(index),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: isCurrent
+                            ? colorScheme.primary
+                            : isAnswered
+                                ? colorScheme.secondary
+                                : colorScheme.outlineVariant,
+                        width: isCurrent ? 2 : 1,
+                      ),
+                    ),
+                    alignment: Alignment.center,
+                    child: Stack(
+                      children: [
+                        Center(
+                          child: Text(
+                            '${index + 1}',
+                            style: TextStyle(
+                              color: foregroundColor,
+                              fontWeight: isCurrent || isAnswered
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                            ),
+                          ),
+                        ),
+                        if (isAnswered)
+                          Positioned(
+                            right: 2,
+                            bottom: 1,
+                            child: Icon(
+                              Icons.check,
+                              size: 12,
+                              color: foregroundColor,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 14,
+          runSpacing: 6,
+          children: [
+            _buildQuestionLegend(
+              colorScheme.primary,
+              'Saat ini',
+            ),
+            _buildQuestionLegend(
+              colorScheme.secondaryContainer,
+              'Terjawab',
+            ),
+            _buildQuestionLegend(
+              colorScheme.surface,
+              'Belum dijawab',
+              borderColor: colorScheme.outlineVariant,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildQuestionLegend(
+    Color backgroundColor,
+    String label, {
+    Color? borderColor,
+  }) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: backgroundColor,
+            borderRadius: BorderRadius.circular(3),
+            border: Border.all(color: borderColor ?? backgroundColor),
+          ),
+        ),
+        const SizedBox(width: 5),
+        Text(label, style: Theme.of(context).textTheme.bodySmall),
+      ],
     );
   }
 }

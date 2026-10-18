@@ -173,6 +173,7 @@ void main() {
     expect(find.text('14:59'), findsOneWidget);
 
     await tester.ensureVisible(find.text('Soal Berikutnya'));
+    await tester.ensureVisible(find.text('Soal Berikutnya'));
     await tester.tap(find.text('Soal Berikutnya'));
     await tester.pump();
     expect(find.text(quizQuestions[1].question), findsOneWidget);
@@ -332,5 +333,107 @@ void main() {
     expect(quizHistory, hasLength(1));
     expect(quizHistory.single['correct'], 0);
     expect(completionCount, 1);
+  });
+
+  testWidgets('number navigation preserves answers and timer progress', (
+    WidgetTester tester,
+  ) async {
+    var now = DateTime(2026, 1, 1);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: QuizPage(
+          duration: const Duration(minutes: 15),
+          clock: () => now,
+        ),
+      ),
+    );
+
+    expect(find.byKey(const ValueKey('question-number-0')), findsOneWidget);
+    expect(find.byKey(const ValueKey('question-number-9')), findsOneWidget);
+    await tester.tap(find.text(quizQuestions[0].options[1]));
+    await tester.pump();
+    now = now.add(const Duration(seconds: 4));
+    await tester.pump(const Duration(seconds: 4));
+    expect(find.text('14:56'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('question-number-2')));
+    await tester.pump();
+    expect(find.text(quizQuestions[2].question), findsOneWidget);
+    expect(find.text('14:56'), findsOneWidget);
+    expect(find.text('Terjawab: 1 dari 10'), findsOneWidget);
+
+    await tester.tap(find.text(quizQuestions[2].options[0]));
+    await tester.pump();
+    expect(find.text('Terjawab: 2 dari 10'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('question-number-0')));
+    await tester.pump();
+    expect(find.text(quizQuestions[0].question), findsOneWidget);
+    final savedAnswer = tester.widget<OutlinedButton>(
+      find.byKey(const ValueKey('answer-0-1')),
+    );
+    expect(
+      savedAnswer.style?.backgroundColor?.resolve({}),
+      Theme.of(tester.element(find.byType(QuizPage))).colorScheme.primaryContainer,
+    );
+
+    await tester.tap(find.text(quizQuestions[0].options[0]));
+    await tester.pump();
+    expect(find.text('Terjawab: 2 dari 10'), findsOneWidget);
+    final changedAnswer = tester.widget<OutlinedButton>(
+      find.byKey(const ValueKey('answer-0-0')),
+    );
+    expect(
+      changedAnswer.style?.backgroundColor?.resolve({}),
+      Theme.of(tester.element(find.byType(QuizPage))).colorScheme.primaryContainer,
+    );
+
+    await tester.ensureVisible(find.text('Soal Berikutnya'));
+    await tester.tap(find.text('Soal Berikutnya'));
+    await tester.pump();
+    expect(find.text(quizQuestions[1].question), findsOneWidget);
+    await tester.ensureVisible(find.text('Sebelumnya'));
+    await tester.tap(find.text('Sebelumnya'));
+    await tester.pump();
+    expect(find.text(quizQuestions[0].question), findsOneWidget);
+    expect(find.text('14:56'), findsOneWidget);
+    final restoredAnswer = tester.widget<OutlinedButton>(
+      find.byKey(const ValueKey('answer-0-0')),
+    );
+    expect(
+      restoredAnswer.style?.backgroundColor?.resolve({}),
+      Theme.of(tester.element(find.byType(QuizPage))).colorScheme.primaryContainer,
+    );
+  });
+
+  testWidgets('incomplete quiz asks before submitting', (
+    WidgetTester tester,
+  ) async {
+    quizHistory.clear();
+    await tester.pumpWidget(
+      const MaterialApp(home: QuizPage(duration: Duration(minutes: 15))),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('question-number-9')));
+    await tester.pump();
+    await tester.ensureVisible(find.text('Selesai'));
+    await tester.tap(find.text('Selesai'));
+    await tester.pump();
+    expect(find.text('Masih ada soal belum dijawab'), findsOneWidget);
+    expect(quizHistory, isEmpty);
+
+    await tester.tap(find.text('Kembali'));
+    await tester.pump();
+    expect(find.byType(QuizResultPage), findsNothing);
+    expect(quizHistory, isEmpty);
+
+    await tester.ensureVisible(find.text('Selesai'));
+    await tester.tap(find.text('Selesai'));
+    await tester.pump();
+    await tester.tap(find.text('Kumpulkan'));
+    await tester.pumpAndSettle();
+    expect(find.byType(QuizResultPage), findsOneWidget);
+    expect(find.text('0 benar dari 10 soal'), findsOneWidget);
+    expect(quizHistory, hasLength(1));
   });
 }
