@@ -2332,25 +2332,116 @@ class BookmarkPage extends StatelessWidget {
 
 class QuizPage extends StatefulWidget {
   final VoidCallback? onQuizFinished;
+  final Duration duration;
+  final DateTime Function()? clock;
 
-  const QuizPage({super.key, this.onQuizFinished});
+  const QuizPage({
+    super.key,
+    this.onQuizFinished,
+    this.duration = const Duration(minutes: 15),
+    this.clock,
+  });
 
   @override
   State<QuizPage> createState() => _QuizPageState();
 }
 
-class _QuizPageState extends State<QuizPage> {
+class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
   int currentQuestion = 0;
   int score = 0;
   int? selectedAnswer;
+  late DateTime _deadline;
+  late Duration _remainingTime;
+  Timer? _countdownTimer;
+  bool _isFinishing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _deadline = (widget.clock?.call() ?? DateTime.now()).add(widget.duration);
+    _remainingTime = widget.duration;
+    _countdownTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => _refreshCountdown(),
+    );
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refreshCountdown();
+  }
+
+  void _refreshCountdown() {
+    if (!mounted || _isFinishing) return;
+    if (_expireIfNeeded()) return;
+    final remaining = _deadline.difference(_currentTime());
+    setState(() {
+      _remainingTime = Duration(seconds: remaining.inSeconds);
+    });
+  }
+
+  DateTime _currentTime() => widget.clock?.call() ?? DateTime.now();
+
+  bool _expireIfNeeded() {
+    if (_deadline.isAfter(_currentTime())) return false;
+    _remainingTime = Duration.zero;
+    _finishQuiz(timedOut: true);
+    return true;
+  }
+
+  void _finishQuiz({
+    required bool timedOut,
+    bool currentAnswerAlreadyScored = false,
+  }) {
+    if (_isFinishing) return;
+    _isFinishing = true;
+    _countdownTimer?.cancel();
+
+    if (!currentAnswerAlreadyScored &&
+        selectedAnswer == quizQuestions[currentQuestion].correctAnswer) {
+      score++;
+    }
+
+    final finalScore = ((score / quizQuestions.length) * 100).round();
+    quizHistory.add({
+      'score': finalScore,
+      'correct': score,
+      'total': quizQuestions.length,
+      'date': _currentTime(),
+    });
+    widget.onQuizFinished?.call();
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => QuizResultPage(
+          score: score,
+          total: quizQuestions.length,
+          timedOut: timedOut,
+        ),
+      ),
+    );
+  }
+
+  String _formatRemainingTime() {
+    final totalSeconds = _remainingTime.inSeconds.clamp(0, 599999);
+    final minutes = (totalSeconds ~/ 60).toString().padLeft(2, '0');
+    final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
 
   void chooseAnswer(int answer) {
+    if (_isFinishing) return;
+    if (_expireIfNeeded()) return;
     setState(() {
       selectedAnswer = answer;
     });
   }
 
   void nextQuestion() {
+    if (_isFinishing) return;
+    if (_expireIfNeeded()) return;
     if (selectedAnswer == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Pilih jawaban terlebih dahulu.')),
@@ -2368,25 +2459,15 @@ class _QuizPageState extends State<QuizPage> {
         selectedAnswer = null;
       });
     } else {
-      final finalScore = ((score / quizQuestions.length) * 100).round();
-
-      quizHistory.add({
-        'score': finalScore,
-        'correct': score,
-        'total': quizQuestions.length,
-        'date': DateTime.now(),
-      });
-
-      widget.onQuizFinished?.call();
-
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) =>
-              QuizResultPage(score: score, total: quizQuestions.length),
-        ),
-      );
+      _finishQuiz(timedOut: false, currentAnswerAlreadyScored: true);
     }
+  }
+
+  @override
+  void dispose() {
+    _countdownTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   @override
@@ -2395,17 +2476,26 @@ class _QuizPageState extends State<QuizPage> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Quiz TKJ')),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Soal ${currentQuestion + 1} dari ${quizQuestions.length}',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.primary,
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    'Soal ${currentQuestion + 1} dari ${quizQuestions.length}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ),
+                _buildTimer(context),
+              ],
             ),
 
             const SizedBox(height: 15),
@@ -2467,13 +2557,13 @@ class _QuizPageState extends State<QuizPage> {
               );
             }),
 
-            const Spacer(),
+            const SizedBox(height: 30),
 
             SizedBox(
               width: double.infinity,
               height: 52,
               child: ElevatedButton(
-                onPressed: nextQuestion,
+                onPressed: _isFinishing ? null : nextQuestion,
                 child: Text(
                   currentQuestion == quizQuestions.length - 1
                       ? 'Selesai'
@@ -2486,6 +2576,55 @@ class _QuizPageState extends State<QuizPage> {
       ),
     );
   }
+
+  Widget _buildTimer(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isWarning = _remainingTime <= const Duration(minutes: 1);
+    final foregroundColor = isWarning
+        ? colorScheme.onErrorContainer
+        : colorScheme.primary;
+
+    return Container(
+      key: const ValueKey('quiz-timer'),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: isWarning ? colorScheme.errorContainer : colorScheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isWarning ? colorScheme.error : colorScheme.outlineVariant,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.timer_outlined, size: 20, color: foregroundColor),
+          const SizedBox(width: 7),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Sisa Waktu',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: isWarning
+                      ? colorScheme.onErrorContainer
+                      : colorScheme.onSurfaceVariant,
+                ),
+              ),
+              Text(
+                _formatRemainingTime(),
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: foregroundColor,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 // ============================================================
@@ -2495,8 +2634,14 @@ class _QuizPageState extends State<QuizPage> {
 class QuizResultPage extends StatelessWidget {
   final int score;
   final int total;
+  final bool timedOut;
 
-  const QuizResultPage({super.key, required this.score, required this.total});
+  const QuizResultPage({
+    super.key,
+    required this.score,
+    required this.total,
+    this.timedOut = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -2532,6 +2677,15 @@ class QuizResultPage extends StatelessWidget {
                 'Quiz Selesai',
                 style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
               ),
+
+              if (timedOut) ...[
+                const SizedBox(height: 12),
+                Text(
+                  'Waktu habis. Kuis telah diselesaikan otomatis.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ],
 
               const SizedBox(height: 20),
 
