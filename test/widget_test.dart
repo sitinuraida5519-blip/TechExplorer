@@ -4,7 +4,98 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter_application_1/main.dart';
 
+Future<void> startQuiz(
+  WidgetTester tester, {
+  QuizDifficulty difficulty = QuizDifficulty.easy,
+}) async {
+  await tester.ensureVisible(
+    find.byKey(ValueKey('difficulty-${difficulty.name}')),
+  );
+  await tester.tap(find.byKey(ValueKey('difficulty-${difficulty.name}')));
+  await tester.pump();
+  await tester.ensureVisible(find.byKey(const ValueKey('start-quiz')));
+  await tester.tap(find.byKey(const ValueKey('start-quiz')));
+  await tester.pump();
+}
+
 void main() {
+  testWidgets('difficulty selection filters real questions and starts timer', (
+    WidgetTester tester,
+  ) async {
+    for (final difficulty in QuizDifficulty.values) {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: QuizPage(
+            key: ValueKey('quiz-${difficulty.name}'),
+            duration: const Duration(minutes: 2),
+            questionBank: quizQuestions,
+          ),
+        ),
+      );
+
+      await tester.ensureVisible(find.byKey(const ValueKey('start-quiz')));
+      await tester.tap(find.byKey(const ValueKey('start-quiz')));
+      await tester.pump();
+      expect(find.text('Pilih Tingkat Kesulitan'), findsOneWidget);
+      expect(find.text('Sisa Waktu'), findsNothing);
+
+      final questions = questionsForDifficulty(quizQuestions, difficulty);
+      expect(questions, isNotEmpty);
+      expect(
+        questions.every((question) => question.difficulty == difficulty),
+        isTrue,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(ValueKey('difficulty-${difficulty.name}')),
+          matching: find.text('${questions.length} soal'),
+        ),
+        findsOneWidget,
+      );
+
+      await tester.tap(
+        find.byKey(ValueKey('difficulty-${difficulty.name}')),
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('start-quiz')));
+      await tester.pump();
+
+      expect(find.text(questions.first.question), findsOneWidget);
+      expect(find.text('Soal 1 dari ${questions.length}'), findsOneWidget);
+      expect(find.text('Tingkat: ${difficulty.label}'), findsOneWidget);
+      expect(find.text('02:00'), findsOneWidget);
+    }
+  });
+
+  testWidgets('difficulty without questions reports an error and stays idle', (
+    WidgetTester tester,
+  ) async {
+    final easyQuestion = QuizQuestion(
+      question: 'Pertanyaan mudah',
+      options: ['A', 'B'],
+      correctAnswer: 0,
+      difficulty: QuizDifficulty.easy,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: QuizPage(questionBank: [easyQuestion]),
+      ),
+    );
+
+    expect(find.text('Tidak tersedia'), findsNWidgets(2));
+    await tester.tap(find.byKey(const ValueKey('difficulty-hard')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('start-quiz')));
+    await tester.pump();
+
+    expect(
+      find.text('Belum ada soal untuk tingkat Sulit.'),
+      findsOneWidget,
+    );
+    expect(find.text('Pilih Tingkat Kesulitan'), findsOneWidget);
+    expect(find.text('Sisa Waktu'), findsNothing);
+  });
+
   testWidgets('TechExplorer app loads and navigates to login screen', (
     WidgetTester tester,
   ) async {
@@ -158,9 +249,14 @@ void main() {
       ),
     );
 
+    await startQuiz(tester, difficulty: QuizDifficulty.easy);
+    final questions = questionsForDifficulty(
+      quizQuestions,
+      QuizDifficulty.easy,
+    );
     expect(find.text('Sisa Waktu'), findsOneWidget);
     expect(find.text('15:00'), findsOneWidget);
-    final firstQuestion = quizQuestions.first;
+    final firstQuestion = questions.first;
     await tester.ensureVisible(
       find.text(firstQuestion.options[firstQuestion.correctAnswer]),
     );
@@ -173,20 +269,19 @@ void main() {
     expect(find.text('14:59'), findsOneWidget);
 
     await tester.ensureVisible(find.text('Soal Berikutnya'));
-    await tester.ensureVisible(find.text('Soal Berikutnya'));
     await tester.tap(find.text('Soal Berikutnya'));
     await tester.pump();
-    expect(find.text(quizQuestions[1].question), findsOneWidget);
+    expect(find.text(questions[1].question), findsOneWidget);
     expect(find.text('14:59'), findsOneWidget);
 
-    for (var index = 1; index < quizQuestions.length; index++) {
-      final question = quizQuestions[index];
+    for (var index = 1; index < questions.length; index++) {
+      final question = questions[index];
       await tester.ensureVisible(
         find.text(question.options[question.correctAnswer]),
       );
       await tester.tap(find.text(question.options[question.correctAnswer]));
       await tester.pump();
-      final nextLabel = index == quizQuestions.length - 1
+      final nextLabel = index == questions.length - 1
           ? 'Selesai'
           : 'Soal Berikutnya';
       await tester.ensureVisible(find.text(nextLabel));
@@ -196,8 +291,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(QuizResultPage), findsOneWidget);
-    expect(find.text('10 benar dari 10 soal'), findsOneWidget);
+    expect(
+      find.text('${questions.length} benar dari ${questions.length} soal'),
+      findsOneWidget,
+    );
+    expect(find.text('Tingkat: Mudah'), findsOneWidget);
     expect(quizHistory, hasLength(1));
+    expect(quizHistory.single['difficulty'], 'easy');
+    expect(quizHistory.single['difficultyLabel'], 'Mudah');
     expect(completionCount, 1);
 
     await tester.pump(const Duration(minutes: 15));
@@ -221,6 +322,11 @@ void main() {
       ),
     );
 
+    await startQuiz(tester, difficulty: QuizDifficulty.easy);
+    final questions = questionsForDifficulty(
+      quizQuestions,
+      QuizDifficulty.easy,
+    );
     expect(find.text('00:05'), findsOneWidget);
     expect(find.byIcon(Icons.timer_outlined), findsOneWidget);
     final timer = tester.widget<Container>(
@@ -233,7 +339,7 @@ void main() {
           .errorContainer,
     );
 
-    final firstQuestion = quizQuestions.first;
+    final firstQuestion = questions.first;
     await tester.ensureVisible(
       find.text(firstQuestion.options[firstQuestion.correctAnswer]),
     );
@@ -254,7 +360,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.text('1 benar dari ${quizQuestions.length} soal'),
+      find.text('1 benar dari ${questions.length} soal'),
       findsOneWidget,
     );
     expect(quizHistory, hasLength(1));
@@ -291,6 +397,7 @@ void main() {
 
     await tester.tap(find.text('Mulai Kuis'));
     await tester.pumpAndSettle();
+    await startQuiz(tester);
     expect(find.text('00:05'), findsOneWidget);
     await tester.pageBack();
     await tester.pumpAndSettle();
@@ -306,7 +413,6 @@ void main() {
     quizHistory.clear();
     var completionCount = 0;
     var now = DateTime(2026, 1, 1);
-    final firstQuestion = quizQuestions.first;
     await tester.pumpWidget(
       MaterialApp(
         home: QuizPage(
@@ -316,7 +422,12 @@ void main() {
         ),
       ),
     );
-
+    await startQuiz(tester);
+    final questions = questionsForDifficulty(
+      quizQuestions,
+      QuizDifficulty.easy,
+    );
+    final firstQuestion = questions.first;
     final wrongAnswer = firstQuestion.correctAnswer == 0 ? 1 : 0;
     await tester.ensureVisible(find.text(firstQuestion.options[wrongAnswer]));
     await tester.tap(find.text(firstQuestion.options[wrongAnswer]));
@@ -329,7 +440,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(QuizResultPage), findsOneWidget);
-    expect(find.text('0 benar dari ${quizQuestions.length} soal'), findsOneWidget);
+    expect(find.text('0 benar dari ${questions.length} soal'), findsOneWidget);
     expect(quizHistory, hasLength(1));
     expect(quizHistory.single['correct'], 0);
     expect(completionCount, 1);
@@ -348,9 +459,22 @@ void main() {
       ),
     );
 
+    await startQuiz(tester, difficulty: QuizDifficulty.medium);
+    final questions = questionsForDifficulty(
+      quizQuestions,
+      QuizDifficulty.medium,
+    );
     expect(find.byKey(const ValueKey('question-number-0')), findsOneWidget);
-    expect(find.byKey(const ValueKey('question-number-9')), findsOneWidget);
-    await tester.tap(find.text(quizQuestions[0].options[1]));
+    expect(
+      find.byKey(ValueKey('question-number-${questions.length - 1}')),
+      findsOneWidget,
+    );
+    await tester.ensureVisible(
+      find.text(questions[0].options[questions[0].correctAnswer]),
+    );
+    await tester.tap(
+      find.text(questions[0].options[questions[0].correctAnswer]),
+    );
     await tester.pump();
     now = now.add(const Duration(seconds: 4));
     await tester.pump(const Duration(seconds: 4));
@@ -358,28 +482,32 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('question-number-2')));
     await tester.pump();
-    expect(find.text(quizQuestions[2].question), findsOneWidget);
+    expect(find.text(questions[2].question), findsOneWidget);
     expect(find.text('14:56'), findsOneWidget);
-    expect(find.text('Terjawab: 1 dari 10'), findsOneWidget);
+    expect(find.text('Terjawab: 1 dari ${questions.length}'), findsOneWidget);
 
-    await tester.tap(find.text(quizQuestions[2].options[0]));
+    await tester.ensureVisible(find.text(questions[2].options[0]));
+    await tester.tap(find.text(questions[2].options[0]));
     await tester.pump();
-    expect(find.text('Terjawab: 2 dari 10'), findsOneWidget);
+    expect(find.text('Terjawab: 2 dari ${questions.length}'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('question-number-0')));
     await tester.pump();
-    expect(find.text(quizQuestions[0].question), findsOneWidget);
+    expect(find.text(questions[0].question), findsOneWidget);
     final savedAnswer = tester.widget<OutlinedButton>(
-      find.byKey(const ValueKey('answer-0-1')),
+      find.byKey(
+        ValueKey('answer-0-${questions[0].correctAnswer}'),
+      ),
     );
     expect(
       savedAnswer.style?.backgroundColor?.resolve({}),
       Theme.of(tester.element(find.byType(QuizPage))).colorScheme.primaryContainer,
     );
 
-    await tester.tap(find.text(quizQuestions[0].options[0]));
+    await tester.ensureVisible(find.text(questions[0].options[0]));
+    await tester.tap(find.text(questions[0].options[0]));
     await tester.pump();
-    expect(find.text('Terjawab: 2 dari 10'), findsOneWidget);
+    expect(find.text('Terjawab: 2 dari ${questions.length}'), findsOneWidget);
     final changedAnswer = tester.widget<OutlinedButton>(
       find.byKey(const ValueKey('answer-0-0')),
     );
@@ -391,11 +519,11 @@ void main() {
     await tester.ensureVisible(find.text('Soal Berikutnya'));
     await tester.tap(find.text('Soal Berikutnya'));
     await tester.pump();
-    expect(find.text(quizQuestions[1].question), findsOneWidget);
+    expect(find.text(questions[1].question), findsOneWidget);
     await tester.ensureVisible(find.text('Sebelumnya'));
     await tester.tap(find.text('Sebelumnya'));
     await tester.pump();
-    expect(find.text(quizQuestions[0].question), findsOneWidget);
+    expect(find.text(questions[0].question), findsOneWidget);
     expect(find.text('14:56'), findsOneWidget);
     final restoredAnswer = tester.widget<OutlinedButton>(
       find.byKey(const ValueKey('answer-0-0')),
@@ -414,7 +542,14 @@ void main() {
       const MaterialApp(home: QuizPage(duration: Duration(minutes: 15))),
     );
 
-    await tester.tap(find.byKey(const ValueKey('question-number-9')));
+    await startQuiz(tester, difficulty: QuizDifficulty.easy);
+    final questions = questionsForDifficulty(
+      quizQuestions,
+      QuizDifficulty.easy,
+    );
+    await tester.tap(
+      find.byKey(ValueKey('question-number-${questions.length - 1}')),
+    );
     await tester.pump();
     await tester.ensureVisible(find.text('Selesai'));
     await tester.tap(find.text('Selesai'));
@@ -433,7 +568,7 @@ void main() {
     await tester.tap(find.text('Kumpulkan'));
     await tester.pumpAndSettle();
     expect(find.byType(QuizResultPage), findsOneWidget);
-    expect(find.text('0 benar dari 10 soal'), findsOneWidget);
+    expect(find.text('0 benar dari ${questions.length} soal'), findsOneWidget);
     expect(quizHistory, hasLength(1));
   });
 }

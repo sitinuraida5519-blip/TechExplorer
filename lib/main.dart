@@ -281,17 +281,40 @@ class MaterialHistoryStore extends ChangeNotifier {
 // MODEL SOAL
 // ============================================================
 
+enum QuizDifficulty { easy, medium, hard }
+
+extension QuizDifficultyDetails on QuizDifficulty {
+  String get label => switch (this) {
+    QuizDifficulty.easy => 'Mudah',
+    QuizDifficulty.medium => 'Sedang',
+    QuizDifficulty.hard => 'Sulit',
+  };
+
+  String get description => switch (this) {
+    QuizDifficulty.easy => 'Konsep dasar dengan pertanyaan langsung.',
+    QuizDifficulty.medium => 'Penerapan konsep dan analisis sederhana.',
+    QuizDifficulty.hard => 'Skenario troubleshooting yang perlu dianalisis.',
+  };
+}
+
 class QuizQuestion {
   String question;
   List<String> options;
   int correctAnswer;
+  QuizDifficulty difficulty;
 
   QuizQuestion({
     required this.question,
     required this.options,
     required this.correctAnswer,
+    this.difficulty = QuizDifficulty.easy,
   });
 }
+
+List<QuizQuestion> questionsForDifficulty(
+  Iterable<QuizQuestion> questionBank,
+  QuizDifficulty difficulty,
+) => questionBank.where((question) => question.difficulty == difficulty).toList();
 
 // ============================================================
 // DATA MATERI TECH EXPLORER
@@ -596,6 +619,7 @@ List<QuizQuestion> quizQuestions = [
         'Komponen yang berfungsi sebagai pusat pemrosesan komputer adalah?',
     options: ['RAM', 'Processor', 'Keyboard', 'Monitor'],
     correctAnswer: 1,
+    difficulty: QuizDifficulty.easy,
   ),
 
   QuizQuestion(
@@ -607,12 +631,15 @@ List<QuizQuestion> quizQuestions = [
       'Mencetak dokumen',
     ],
     correctAnswer: 0,
+    difficulty: QuizDifficulty.easy,
   ),
 
   QuizQuestion(
-    question: 'Perangkat yang digunakan untuk menghubungkan jaringan yang berbeda adalah?',
+    question:
+      'Dua subnet perlu bertukar data. Perangkat apa yang meneruskan paket antarjaringan?',
     options: ['Keyboard', 'Monitor', 'Router', 'Mouse'],
     correctAnswer: 2,
+    difficulty: QuizDifficulty.medium,
   ),
 
   QuizQuestion(
@@ -624,18 +651,22 @@ List<QuizQuestion> quizQuestions = [
       'Menjalankan processor',
     ],
     correctAnswer: 0,
+    difficulty: QuizDifficulty.easy,
   ),
 
   QuizQuestion(
     question: 'Sistem operasi termasuk ke dalam jenis?',
     options: ['Hardware', 'Software', 'Brainware', 'Network Device'],
     correctAnswer: 1,
+    difficulty: QuizDifficulty.easy,
   ),
 
   QuizQuestion(
-    question: 'Perangkat yang banyak digunakan untuk menghubungkan komputer dalam LAN adalah?',
+    question:
+      'Komputer dalam satu LAN kabel perlu terhubung melalui titik pusat. Perangkat apa yang sesuai?',
     options: ['Switch', 'Monitor', 'Printer', 'Keyboard'],
     correctAnswer: 0,
+    difficulty: QuizDifficulty.medium,
   ),
 
   QuizQuestion(
@@ -647,25 +678,53 @@ List<QuizQuestion> quizQuestions = [
       'Link Area Network',
     ],
     correctAnswer: 0,
+    difficulty: QuizDifficulty.easy,
   ),
 
   QuizQuestion(
     question: 'Perangkat yang menyediakan koneksi Wi-Fi disebut?',
     options: ['RAM', 'Access Point', 'Processor', 'Hard Disk'],
     correctAnswer: 1,
+    difficulty: QuizDifficulty.easy,
   ),
 
   QuizQuestion(
     question: 'Contoh media penyimpanan adalah?',
     options: ['SSD', 'Keyboard', 'Monitor', 'Mouse'],
     correctAnswer: 0,
+    difficulty: QuizDifficulty.easy,
   ),
 
   QuizQuestion(
     question:
-        'Perintah yang umum digunakan untuk menguji koneksi jaringan adalah?',
+        'Teknisi mengirim permintaan echo ICMP untuk memastikan host merespons. Perintah apa yang digunakan?',
     options: ['copy', 'ping', 'delete', 'format'],
     correctAnswer: 1,
+    difficulty: QuizDifficulty.medium,
+  ),
+
+  QuizQuestion(
+    question:
+        'Komputer dapat mengakses perangkat satu subnet, tetapi gagal mencapai jaringan lain. IP dan DNS benar. Konfigurasi apa yang paling perlu diperiksa?',
+    options: ['DNS', 'Default gateway', 'Nama komputer', 'Kecepatan switch'],
+    correctAnswer: 1,
+    difficulty: QuizDifficulty.hard,
+  ),
+
+  QuizQuestion(
+    question:
+        'Situs dapat dibuka memakai alamat IP, tetapi tidak dengan nama domain. Koneksi jaringan lain normal. Layanan apa yang paling mungkin bermasalah?',
+    options: ['DHCP', 'DNS', 'Default gateway', 'Access point'],
+    correctAnswer: 1,
+    difficulty: QuizDifficulty.hard,
+  ),
+
+  QuizQuestion(
+    question:
+        'Dua perangkat tersambung ke switch yang sama tetapi gagal berkomunikasi. Kabel baik dan alamat IP berada di jaringan berbeda karena prefix salah. Pengaturan apa yang perlu dikoreksi?',
+    options: ['Subnet mask', 'Nama host', 'DNS publik', 'SSID Wi-Fi'],
+    correctAnswer: 0,
+    difficulty: QuizDifficulty.hard,
   ),
 ];
 
@@ -2334,12 +2393,14 @@ class QuizPage extends StatefulWidget {
   final VoidCallback? onQuizFinished;
   final Duration duration;
   final DateTime Function()? clock;
+  final List<QuizQuestion>? questionBank;
 
   const QuizPage({
     super.key,
     this.onQuizFinished,
     this.duration = const Duration(minutes: 15),
     this.clock,
+    this.questionBank,
   });
 
   @override
@@ -2350,20 +2411,43 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
   int currentQuestion = 0;
   int score = 0;
   final Map<int, int> answers = {};
-  late DateTime _deadline;
-  late Duration _remainingTime;
+  List<QuizQuestion> _questions = [];
+  QuizDifficulty? _selectedDifficulty;
+  DateTime? _deadline;
+  Duration _remainingTime = Duration.zero;
   Timer? _countdownTimer;
+  bool _quizStarted = false;
   bool _isFinishing = false;
   bool _isFinishDialogOpen = false;
 
   int? get selectedAnswer => answers[currentQuestion];
 
-  @override
-  void initState() {
-    super.initState();
+  List<QuizQuestion> get _questionBank => widget.questionBank ?? quizQuestions;
+
+  void _startQuiz() {
+    final difficulty = _selectedDifficulty;
+    if (difficulty == null) return;
+
+    final selectedQuestions = questionsForDifficulty(_questionBank, difficulty);
+    if (selectedQuestions.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Belum ada soal untuk tingkat ${difficulty.label}.'),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _questions = selectedQuestions;
+      currentQuestion = 0;
+      score = 0;
+      answers.clear();
+      _remainingTime = widget.duration;
+      _deadline = _currentTime().add(widget.duration);
+      _quizStarted = true;
+    });
     WidgetsBinding.instance.addObserver(this);
-    _deadline = (widget.clock?.call() ?? DateTime.now()).add(widget.duration);
-    _remainingTime = widget.duration;
     _countdownTimer = Timer.periodic(
       const Duration(seconds: 1),
       (_) => _refreshCountdown(),
@@ -2372,13 +2456,17 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _refreshCountdown();
+    if (_quizStarted && state == AppLifecycleState.resumed) {
+      _refreshCountdown();
+    }
   }
 
   void _refreshCountdown() {
     if (!mounted || _isFinishing) return;
     if (_expireIfNeeded()) return;
-    final remaining = _deadline.difference(_currentTime());
+    final deadline = _deadline;
+    if (deadline == null) return;
+    final remaining = deadline.difference(_currentTime());
     setState(() {
       _remainingTime = Duration(seconds: remaining.inSeconds);
     });
@@ -2387,7 +2475,10 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
   DateTime _currentTime() => widget.clock?.call() ?? DateTime.now();
 
   bool _expireIfNeeded() {
-    if (_deadline.isAfter(_currentTime())) return false;
+    final deadline = _deadline;
+    if (!_quizStarted || deadline == null || deadline.isAfter(_currentTime())) {
+      return false;
+    }
     _remainingTime = Duration.zero;
     _finishQuiz(timedOut: true);
     return true;
@@ -2408,14 +2499,16 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
     score = answers.entries
         .where(
           (entry) =>
-              entry.value == quizQuestions[entry.key].correctAnswer,
+              entry.value == _questions[entry.key].correctAnswer,
         )
         .length;
-    final finalScore = ((score / quizQuestions.length) * 100).round();
+    final finalScore = ((score / _questions.length) * 100).round();
     quizHistory.add({
       'score': finalScore,
       'correct': score,
-      'total': quizQuestions.length,
+      'total': _questions.length,
+      'difficulty': _selectedDifficulty!.name,
+      'difficultyLabel': _selectedDifficulty!.label,
       'date': _currentTime(),
     });
     widget.onQuizFinished?.call();
@@ -2425,8 +2518,9 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
       MaterialPageRoute(
         builder: (_) => QuizResultPage(
           score: score,
-          total: quizQuestions.length,
+          total: _questions.length,
           timedOut: timedOut,
+          difficulty: _selectedDifficulty,
         ),
       ),
     );
@@ -2451,7 +2545,7 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
     if (_isFinishing) return;
     if (_expireIfNeeded()) return;
 
-    if (currentQuestion < quizQuestions.length - 1) {
+    if (currentQuestion < _questions.length - 1) {
       setState(() {
         currentQuestion++;
       });
@@ -2473,7 +2567,7 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
   Future<void> _requestFinishQuiz() async {
     if (_isFinishing || _isFinishDialogOpen || _expireIfNeeded()) return;
 
-    if (answers.length < quizQuestions.length) {
+    if (answers.length < _questions.length) {
       _isFinishDialogOpen = true;
       final shouldFinish = await showDialog<bool>(
         context: context,
@@ -2481,7 +2575,7 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
           title: const Text('Masih ada soal belum dijawab'),
           content: Text(
             'Kamu baru menjawab ${answers.length} dari '
-            '${quizQuestions.length} soal. Tetap kumpulkan kuis?',
+            '${_questions.length} soal. Tetap kumpulkan kuis?',
           ),
           actions: [
             TextButton(
@@ -2505,13 +2599,15 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
   @override
   void dispose() {
     _countdownTimer?.cancel();
-    WidgetsBinding.instance.removeObserver(this);
+    if (_quizStarted) WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final question = quizQuestions[currentQuestion];
+    if (!_quizStarted) return _buildDifficultySelection(context);
+
+    final question = _questions[currentQuestion];
 
     return Scaffold(
       appBar: AppBar(title: const Text('Quiz TKJ')),
@@ -2526,7 +2622,7 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
               children: [
                 Expanded(
                   child: Text(
-                    'Soal ${currentQuestion + 1} dari ${quizQuestions.length}',
+                    'Soal ${currentQuestion + 1} dari ${_questions.length}',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       color: Theme.of(context).colorScheme.primary,
@@ -2540,7 +2636,20 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
             const SizedBox(height: 15),
 
             LinearProgressIndicator(
-              value: (currentQuestion + 1) / quizQuestions.length,
+              value: (currentQuestion + 1) / _questions.length,
+            ),
+
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Chip(
+                avatar: Icon(
+                  Icons.tune,
+                  size: 18,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                label: Text('Tingkat: ${_selectedDifficulty!.label}'),
+                visualDensity: VisualDensity.compact,
+              ),
             ),
 
             const SizedBox(height: 16),
@@ -2619,12 +2728,12 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
                   child: ElevatedButton.icon(
                     onPressed: _isFinishing ? null : nextQuestion,
                     icon: Icon(
-                      currentQuestion == quizQuestions.length - 1
+                      currentQuestion == _questions.length - 1
                           ? Icons.check
                           : Icons.chevron_right,
                     ),
                     label: Text(
-                      currentQuestion == quizQuestions.length - 1
+                      currentQuestion == _questions.length - 1
                           ? 'Selesai'
                           : 'Soal Berikutnya',
                     ),
@@ -2687,6 +2796,164 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
     );
   }
 
+  Widget _buildDifficultySelection(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Pilih Tingkat Kesulitan')),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Pilih tingkat sebelum memulai kuis.',
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+              ),
+              const SizedBox(height: 20),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final cardWidth = constraints.maxWidth >= 720
+                      ? (constraints.maxWidth - 24) / 3
+                      : constraints.maxWidth;
+                  return Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: QuizDifficulty.values.map((difficulty) {
+                      final isSelected = _selectedDifficulty == difficulty;
+                      final questions = questionsForDifficulty(
+                        _questionBank,
+                        difficulty,
+                      );
+                      final accentColor = switch (difficulty) {
+                        QuizDifficulty.easy => colorScheme.primary,
+                        QuizDifficulty.medium => colorScheme.tertiary,
+                        QuizDifficulty.hard => colorScheme.error,
+                      };
+                      final selectedColor = switch (difficulty) {
+                        QuizDifficulty.easy => colorScheme.primaryContainer,
+                        QuizDifficulty.medium => colorScheme.tertiaryContainer,
+                        QuizDifficulty.hard => colorScheme.errorContainer,
+                      };
+                      final selectedForeground = switch (difficulty) {
+                        QuizDifficulty.easy => colorScheme.onPrimaryContainer,
+                        QuizDifficulty.medium => colorScheme.onTertiaryContainer,
+                        QuizDifficulty.hard => colorScheme.onErrorContainer,
+                      };
+                      final icon = switch (difficulty) {
+                        QuizDifficulty.easy => Icons.sentiment_satisfied_alt,
+                        QuizDifficulty.medium => Icons.psychology_outlined,
+                        QuizDifficulty.hard => Icons.local_fire_department_outlined,
+                      };
+
+                      return SizedBox(
+                        width: cardWidth,
+                        child: Material(
+                          color: isSelected
+                              ? selectedColor
+                              : colorScheme.surface,
+                          borderRadius: BorderRadius.circular(14),
+                          child: InkWell(
+                            key: ValueKey('difficulty-${difficulty.name}'),
+                            borderRadius: BorderRadius.circular(14),
+                            onTap: () => setState(
+                              () => _selectedDifficulty = difficulty,
+                            ),
+                            child: Container(
+                              constraints: const BoxConstraints(minHeight: 142),
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: isSelected
+                                      ? accentColor
+                                      : colorScheme.outlineVariant,
+                                  width: isSelected ? 2 : 1,
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(icon, color: accentColor),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          difficulty.label,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .titleMedium
+                                              ?.copyWith(
+                                                color: isSelected
+                                                    ? selectedForeground
+                                                    : colorScheme.onSurface,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                        ),
+                                      ),
+                                      if (isSelected)
+                                        Icon(
+                                          Icons.check_circle,
+                                          color: accentColor,
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Text(
+                                    difficulty.description,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(
+                                          color: isSelected
+                                              ? selectedForeground
+                                              : colorScheme.onSurfaceVariant,
+                                        ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    questions.isEmpty
+                                        ? 'Tidak tersedia'
+                                        : '${questions.length} soal',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelLarge
+                                        ?.copyWith(
+                                          color: accentColor,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  );
+                },
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton.icon(
+                  key: const ValueKey('start-quiz'),
+                  onPressed: _selectedDifficulty == null ? null : _startQuiz,
+                  icon: const Icon(Icons.play_arrow),
+                  label: const Text('Mulai Kuis'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildQuestionNavigation(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final answeredCount = answers.length;
@@ -2704,7 +2971,7 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
                   ),
             ),
             Text(
-              'Terjawab: $answeredCount dari ${quizQuestions.length}',
+              'Terjawab: $answeredCount dari ${_questions.length}',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: colorScheme.onSurfaceVariant,
                   ),
@@ -2721,7 +2988,7 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
             crossAxisSpacing: 8,
             childAspectRatio: 1,
           ),
-          itemCount: quizQuestions.length,
+          itemCount: _questions.length,
           itemBuilder: (context, index) {
             final isCurrent = index == currentQuestion;
             final isAnswered = answers.containsKey(index);
@@ -2848,12 +3115,14 @@ class QuizResultPage extends StatelessWidget {
   final int score;
   final int total;
   final bool timedOut;
+  final QuizDifficulty? difficulty;
 
   const QuizResultPage({
     super.key,
     required this.score,
     required this.total,
     this.timedOut = false,
+    this.difficulty,
   });
 
   @override
@@ -2890,6 +3159,11 @@ class QuizResultPage extends StatelessWidget {
                 'Quiz Selesai',
                 style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
               ),
+
+              if (difficulty != null) ...[
+                const SizedBox(height: 8),
+                Text('Tingkat: ${difficulty!.label}'),
+              ],
 
               if (timedOut) ...[
                 const SizedBox(height: 12),
