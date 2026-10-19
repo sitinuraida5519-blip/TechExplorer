@@ -17,9 +17,15 @@ Future<void> main() async {
   }
   final storedQuestions = await quizQuestionStore.load();
   if (storedQuestions != null) {
-    final knownIds = quizQuestions.map((question) => question.id).toSet();
     for (final question in storedQuestions) {
-      if (knownIds.add(question.id)) quizQuestions.add(question);
+      final existingIndex = quizQuestions.indexWhere(
+        (item) => item.id == question.id,
+      );
+      if (existingIndex == -1) {
+        quizQuestions.add(question);
+      } else {
+        quizQuestions[existingIndex] = question;
+      }
     }
   }
   runApp(const MyApp());
@@ -403,7 +409,7 @@ enum QuizDifficulty { easy, medium, hard }
 int _quizQuestionSequence = 0;
 
 String newQuizQuestionId() =>
-  'admin-question-${DateTime.now().microsecondsSinceEpoch}-${_quizQuestionSequence++}';
+    'admin-question-${DateTime.now().microsecondsSinceEpoch}-${_quizQuestionSequence++}';
 
 extension QuizDifficultyDetails on QuizDifficulty {
   String get label => switch (this) {
@@ -441,6 +447,27 @@ class QuizQuestion {
     this.isActive = true,
     this.type = 'multipleChoice',
   }) : id = id ?? 'bank-question-${_quizQuestionSequence++}';
+
+  QuizQuestion copyWith({
+    String? question,
+    List<String>? options,
+    int? correctAnswer,
+    QuizDifficulty? difficulty,
+    String? category,
+    String? explanation,
+    bool? isActive,
+    String? type,
+  }) => QuizQuestion(
+    id: id,
+    question: question ?? this.question,
+    options: options ?? List<String>.of(this.options),
+    correctAnswer: correctAnswer ?? this.correctAnswer,
+    difficulty: difficulty ?? this.difficulty,
+    category: category ?? this.category,
+    explanation: explanation ?? this.explanation,
+    isActive: isActive ?? this.isActive,
+    type: type ?? this.type,
+  );
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -510,6 +537,8 @@ List<QuizQuestion> questionsForDifficulty(
 
 enum QuizQuestionSaveResult { saved, duplicateId, failed }
 
+enum QuizQuestionMutationResult { saved, notFound, failed }
+
 class QuizQuestionStore {
   static const String _storageKey = 'tech_explorer_admin_quiz_questions_v1';
 
@@ -555,10 +584,57 @@ class QuizQuestionStore {
           question.toJson(),
         ]),
       );
-      return saved ? QuizQuestionSaveResult.saved : QuizQuestionSaveResult.failed;
+      return saved
+          ? QuizQuestionSaveResult.saved
+          : QuizQuestionSaveResult.failed;
     } catch (_) {
       return QuizQuestionSaveResult.failed;
     }
+  }
+
+  Future<QuizQuestionMutationResult> update(
+    QuizQuestion question, {
+    required Iterable<QuizQuestion> existingQuestions,
+  }) async {
+    if (!existingQuestions.any((item) => item.id == question.id)) {
+      return QuizQuestionMutationResult.notFound;
+    }
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final storedQuestions = await load();
+      if (storedQuestions == null) return QuizQuestionMutationResult.failed;
+      final storedIndex = storedQuestions.indexWhere(
+        (item) => item.id == question.id,
+      );
+      if (storedIndex == -1) {
+        storedQuestions.add(question);
+      } else {
+        storedQuestions[storedIndex] = question;
+      }
+      final saved = await preferences.setString(
+        _storageKey,
+        jsonEncode(storedQuestions.map((item) => item.toJson()).toList()),
+      );
+      return saved
+          ? QuizQuestionMutationResult.saved
+          : QuizQuestionMutationResult.failed;
+    } catch (_) {
+      return QuizQuestionMutationResult.failed;
+    }
+  }
+
+  Future<QuizQuestionMutationResult> deactivate(
+    String id, {
+    required Iterable<QuizQuestion> existingQuestions,
+  }) async {
+    final question = existingQuestions
+        .where((item) => item.id == id)
+        .firstOrNull;
+    if (question == null) return QuizQuestionMutationResult.notFound;
+    return update(
+      question.copyWith(isActive: false),
+      existingQuestions: existingQuestions,
+    );
   }
 }
 
@@ -885,8 +961,7 @@ List<QuizQuestion> quizQuestions = [
   ),
 
   QuizQuestion(
-    question:
-      'Dua subnet perlu bertukar data. Perangkat apa yang meneruskan paket antarjaringan?',
+    question: 'Dua subnet perlu bertukar data. Perangkat apa yang meneruskan paket antarjaringan?',
     options: ['Keyboard', 'Monitor', 'Router', 'Mouse'],
     correctAnswer: 2,
     difficulty: QuizDifficulty.medium,
@@ -915,8 +990,7 @@ List<QuizQuestion> quizQuestions = [
   ),
 
   QuizQuestion(
-    question:
-      'Komputer dalam satu LAN kabel perlu terhubung melalui titik pusat. Perangkat apa yang sesuai?',
+    question: 'Komputer dalam satu LAN kabel perlu terhubung melalui titik pusat. Perangkat apa yang sesuai?',
     options: ['Switch', 'Monitor', 'Printer', 'Keyboard'],
     correctAnswer: 0,
     difficulty: QuizDifficulty.medium,
@@ -953,8 +1027,7 @@ List<QuizQuestion> quizQuestions = [
   ),
 
   QuizQuestion(
-    question:
-        'Teknisi mengirim permintaan echo ICMP untuk memastikan host merespons. Perintah apa yang digunakan?',
+    question: 'Teknisi mengirim permintaan echo ICMP untuk memastikan host merespons. Perintah apa yang digunakan?',
     options: ['copy', 'ping', 'delete', 'format'],
     correctAnswer: 1,
     difficulty: QuizDifficulty.medium,
@@ -962,8 +1035,7 @@ List<QuizQuestion> quizQuestions = [
   ),
 
   QuizQuestion(
-    question:
-        'Komputer dapat mengakses perangkat satu subnet, tetapi gagal mencapai jaringan lain. IP dan DNS benar. Konfigurasi apa yang paling perlu diperiksa?',
+    question: 'Komputer dapat mengakses perangkat satu subnet, tetapi gagal mencapai jaringan lain. IP dan DNS benar. Konfigurasi apa yang paling perlu diperiksa?',
     options: ['DNS', 'Default gateway', 'Nama komputer', 'Kecepatan switch'],
     correctAnswer: 1,
     difficulty: QuizDifficulty.hard,
@@ -971,8 +1043,7 @@ List<QuizQuestion> quizQuestions = [
   ),
 
   QuizQuestion(
-    question:
-        'Situs dapat dibuka memakai alamat IP, tetapi tidak dengan nama domain. Koneksi jaringan lain normal. Layanan apa yang paling mungkin bermasalah?',
+    question: 'Situs dapat dibuka memakai alamat IP, tetapi tidak dengan nama domain. Koneksi jaringan lain normal. Layanan apa yang paling mungkin bermasalah?',
     options: ['DHCP', 'DNS', 'Default gateway', 'Access point'],
     correctAnswer: 1,
     difficulty: QuizDifficulty.hard,
@@ -980,8 +1051,7 @@ List<QuizQuestion> quizQuestions = [
   ),
 
   QuizQuestion(
-    question:
-        'Dua perangkat tersambung ke switch yang sama tetapi gagal berkomunikasi. Kabel baik dan alamat IP berada di jaringan berbeda karena prefix salah. Pengaturan apa yang perlu dikoreksi?',
+    question: 'Dua perangkat tersambung ke switch yang sama tetapi gagal berkomunikasi. Kabel baik dan alamat IP berada di jaringan berbeda karena prefix salah. Pengaturan apa yang perlu dikoreksi?',
     options: ['Subnet mask', 'Nama host', 'DNS publik', 'SSID Wi-Fi'],
     correctAnswer: 0,
     difficulty: QuizDifficulty.hard,
@@ -1044,9 +1114,7 @@ class ThemeModeTile extends StatelessWidget {
         color: colorScheme.primary,
       ),
       title: Text(isDark ? 'Mode Gelap' : 'Mode Terang'),
-      subtitle: Text(
-        'Beralih ke ${isDark ? 'Mode Terang' : 'Mode Gelap'}',
-      ),
+      subtitle: Text('Beralih ke ${isDark ? 'Mode Terang' : 'Mode Gelap'}'),
       value: isDark,
       onChanged: appThemeController.setDarkMode,
     );
@@ -2588,9 +2656,7 @@ class BookmarkPage extends StatelessWidget {
                         Icon(
                           Icons.bookmark_border,
                           size: 70,
-                            color: Theme.of(context)
-                              .colorScheme
-                              .onSurfaceVariant,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                         const SizedBox(height: 15),
                         const Text('Belum ada materi yang disimpan.'),
@@ -2745,9 +2811,7 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
     return true;
   }
 
-  void _finishQuiz({
-    required bool timedOut,
-  }) {
+  void _finishQuiz({required bool timedOut}) {
     if (_isFinishing) return;
     _isFinishing = true;
     _countdownTimer?.cancel();
@@ -2758,10 +2822,7 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
     }
 
     score = answers.entries
-        .where(
-          (entry) =>
-              entry.value == _questions[entry.key].correctAnswer,
-        )
+        .where((entry) => entry.value == _questions[entry.key].correctAnswer)
         .length;
     final finalScore = ((score / _questions.length) * 100).round();
     quizHistory.add({
@@ -3069,9 +3130,8 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
             children: [
               Text(
                 'Pilih tingkat sebelum memulai kuis.',
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                    ),
+                style: Theme.of(context).textTheme.bodyLarge
+                    ?.copyWith(color: colorScheme.onSurfaceVariant),
               ),
               const SizedBox(height: 20),
               LayoutBuilder(
@@ -3100,13 +3160,15 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
                       };
                       final selectedForeground = switch (difficulty) {
                         QuizDifficulty.easy => colorScheme.onPrimaryContainer,
-                        QuizDifficulty.medium => colorScheme.onTertiaryContainer,
+                        QuizDifficulty.medium =>
+                          colorScheme.onTertiaryContainer,
                         QuizDifficulty.hard => colorScheme.onErrorContainer,
                       };
                       final icon = switch (difficulty) {
                         QuizDifficulty.easy => Icons.sentiment_satisfied_alt,
                         QuizDifficulty.medium => Icons.psychology_outlined,
-                        QuizDifficulty.hard => Icons.local_fire_department_outlined,
+                        QuizDifficulty.hard =>
+                          Icons.local_fire_department_outlined,
                       };
 
                       return SizedBox(
@@ -3165,9 +3227,7 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
                                   const SizedBox(height: 10),
                                   Text(
                                     difficulty.description,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodySmall
+                                    style: Theme.of(context).textTheme.bodySmall
                                         ?.copyWith(
                                           color: isSelected
                                               ? selectedForeground
@@ -3227,15 +3287,13 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
           children: [
             Text(
               'Navigasi Soal',
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+              style: Theme.of(context).textTheme.titleSmall
+                  ?.copyWith(fontWeight: FontWeight.bold),
             ),
             Text(
               'Terjawab: $answeredCount dari ${_questions.length}',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
+              style: Theme.of(context).textTheme.bodySmall
+                  ?.copyWith(color: colorScheme.onSurfaceVariant),
             ),
           ],
         ),
@@ -3256,13 +3314,13 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
             final backgroundColor = isCurrent
                 ? colorScheme.primary
                 : isAnswered
-                    ? colorScheme.secondaryContainer
-                    : colorScheme.surface;
+                ? colorScheme.secondaryContainer
+                : colorScheme.surface;
             final foregroundColor = isCurrent
                 ? colorScheme.onPrimary
                 : isAnswered
-                    ? colorScheme.onSecondaryContainer
-                    : colorScheme.onSurfaceVariant;
+                ? colorScheme.onSecondaryContainer
+                : colorScheme.onSurfaceVariant;
 
             return Semantics(
               button: true,
@@ -3283,8 +3341,8 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
                         color: isCurrent
                             ? colorScheme.primary
                             : isAnswered
-                                ? colorScheme.secondary
-                                : colorScheme.outlineVariant,
+                            ? colorScheme.secondary
+                            : colorScheme.outlineVariant,
                         width: isCurrent ? 2 : 1,
                       ),
                     ),
@@ -3325,14 +3383,8 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
           spacing: 14,
           runSpacing: 6,
           children: [
-            _buildQuestionLegend(
-              colorScheme.primary,
-              'Saat ini',
-            ),
-            _buildQuestionLegend(
-              colorScheme.secondaryContainer,
-              'Terjawab',
-            ),
+            _buildQuestionLegend(colorScheme.primary, 'Saat ini'),
+            _buildQuestionLegend(colorScheme.secondaryContainer, 'Terjawab'),
             _buildQuestionLegend(
               colorScheme.surface,
               'Belum dijawab',
@@ -3870,10 +3922,10 @@ class _AdminMaterialPageState extends State<AdminMaterialPage> {
     String? saveError;
 
     bool hasChanges() =>
-      title != (material?.title ?? '') ||
-      description != (material?.description ?? '') ||
-      content != (material?.content ?? '') ||
-      importantPoints !=
+        title != (material?.title ?? '') ||
+        description != (material?.description ?? '') ||
+        content != (material?.content ?? '') ||
+        importantPoints !=
             (material?.importantPoints ?? 'Materi ditambahkan oleh admin.') ||
         category != originalCategory;
 
@@ -3894,7 +3946,9 @@ class _AdminMaterialPageState extends State<AdminMaterialPage> {
                     initialValue: title,
                     onChanged: (value) => title = value,
                     textCapitalization: TextCapitalization.sentences,
-                    decoration: const InputDecoration(labelText: 'Judul Materi'),
+                    decoration: const InputDecoration(
+                      labelText: 'Judul Materi',
+                    ),
                     validator: (value) => value == null || value.trim().isEmpty
                         ? 'Judul materi wajib diisi.'
                         : null,
@@ -3926,7 +3980,9 @@ class _AdminMaterialPageState extends State<AdminMaterialPage> {
                     onChanged: (value) => importantPoints = value,
                     textCapitalization: TextCapitalization.sentences,
                     maxLines: 3,
-                    decoration: const InputDecoration(labelText: 'Poin Penting'),
+                    decoration: const InputDecoration(
+                      labelText: 'Poin Penting',
+                    ),
                   ),
                   DropdownButtonFormField<String>(
                     key: const ValueKey('material-category-field'),
@@ -3979,17 +4035,13 @@ class _AdminMaterialPageState extends State<AdminMaterialPage> {
                             ),
                             actions: [
                               TextButton(
-                                onPressed: () => Navigator.pop(
-                                  confirmationContext,
-                                  false,
-                                ),
+                                onPressed: () =>
+                                    Navigator.pop(confirmationContext, false),
                                 child: const Text('Lanjut edit'),
                               ),
                               FilledButton(
-                                onPressed: () => Navigator.pop(
-                                  confirmationContext,
-                                  true,
-                                ),
+                                onPressed: () =>
+                                    Navigator.pop(confirmationContext, true),
                                 child: const Text('Buang perubahan'),
                               ),
                             ],
@@ -4019,17 +4071,17 @@ class _AdminMaterialPageState extends State<AdminMaterialPage> {
                               id: 'admin-material-${DateTime.now().microsecondsSinceEpoch}',
                               title: title.trim(),
                               category: category,
-                                description: description.trim(),
-                                content: content.trim(),
-                                importantPoints: importantPoints.trim(),
+                              description: description.trim(),
+                              content: content.trim(),
+                              importantPoints: importantPoints.trim(),
                               icon: Icons.menu_book,
                             )
                           : material.copyWith(
                               title: title.trim(),
                               category: category,
-                                description: description.trim(),
-                                content: content.trim(),
-                                importantPoints: importantPoints.trim(),
+                              description: description.trim(),
+                              content: content.trim(),
+                              importantPoints: importantPoints.trim(),
                             );
                       final updatedCatalog = List<MaterialData>.of(materials);
                       final existingIndex = material == null
@@ -4055,8 +4107,7 @@ class _AdminMaterialPageState extends State<AdminMaterialPage> {
                         if (!dialogContext.mounted) return;
                         setDialogState(() {
                           isSaving = false;
-                          saveError =
-                              'Perubahan belum tersimpan. Periksa penyimpanan lalu coba lagi.';
+                          saveError = 'Perubahan belum tersimpan. Periksa penyimpanan lalu coba lagi.';
                         });
                         return;
                       }
@@ -4081,15 +4132,12 @@ class _AdminMaterialPageState extends State<AdminMaterialPage> {
                       height: 18,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : Text(
-                      material == null ? 'Simpan' : 'Simpan Perubahan',
-                    ),
+                  : Text(material == null ? 'Simpan' : 'Simpan Perubahan'),
             ),
           ],
         ),
       ),
     );
-
   }
 
   Future<void> deleteMaterial(MaterialData material) async {
@@ -4112,7 +4160,9 @@ class _AdminMaterialPageState extends State<AdminMaterialPage> {
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('Materi gagal dihapus karena penyimpanan gagal.'),
+                      content: Text(
+                        'Materi gagal dihapus karena penyimpanan gagal.',
+                      ),
                     ),
                   );
                 }
@@ -4240,11 +4290,104 @@ class _AdminQuizPageState extends State<AdminQuizPage> {
       builder: (_) => _QuizQuestionFormDialog(onSave: _saveQuestion),
     );
     if (saved == true && mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Soal berhasil disimpan.')));
+    }
+  }
+
+  Future<String?> _updateQuestion(QuizQuestion question) async {
+    final result = await _questionStore.update(
+      question,
+      existingQuestions: quizQuestions,
+    );
+    if (result == QuizQuestionMutationResult.notFound) {
+      return 'Soal sudah tidak ditemukan. Muat ulang daftar soal.';
+    }
+    if (result != QuizQuestionMutationResult.saved) {
+      return 'Perubahan gagal disimpan. Periksa penyimpanan lalu coba lagi.';
+    }
+
+    final index = quizQuestions.indexWhere((item) => item.id == question.id);
+    if (index != -1) quizQuestions[index] = question;
+    if (mounted) setState(() {});
+    return null;
+  }
+
+  Future<void> _editQuestion(QuizQuestion question) async {
+    final saved = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _QuizQuestionFormDialog(
+        initialQuestion: question,
+        onSave: _updateQuestion,
+      ),
+    );
+    if (saved == true && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Soal berhasil disimpan.')),
+        const SnackBar(content: Text('Perubahan soal berhasil disimpan.')),
       );
     }
   }
+
+  Future<void> _deactivateQuestion(QuizQuestion question) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Hapus Soal Kuis?'),
+        content: const Text(
+          'Apakah Anda yakin ingin menghapus soal ini? '
+          'Soal yang dihapus tidak akan tersedia lagi untuk kuis berikutnya.',
+        ),
+        actions: [
+          TextButton(
+            key: ValueKey('cancel-delete-quiz-${question.id}'),
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            key: ValueKey('confirm-delete-quiz-${question.id}'),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Hapus'),
+          ),
+        ],
+      ),
+    );
+    if (shouldDelete != true || !mounted) return;
+
+    setState(() => _deletingIds.add(question.id));
+    final result = await _questionStore.deactivate(
+      question.id,
+      existingQuestions: quizQuestions,
+    );
+    if (!mounted) return;
+    _deletingIds.remove(question.id);
+    if (result == QuizQuestionMutationResult.saved) {
+      final index = quizQuestions.indexWhere((item) => item.id == question.id);
+      if (index != -1) {
+        quizQuestions[index] = quizQuestions[index].copyWith(isActive: false);
+      }
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Soal dinonaktifkan untuk kuis berikutnya.'),
+        ),
+      );
+      return;
+    }
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          result == QuizQuestionMutationResult.notFound
+              ? 'Soal sudah tidak ditemukan.'
+              : 'Soal gagal dihapus. Periksa penyimpanan lalu coba lagi.',
+        ),
+      ),
+    );
+  }
+
+  final Set<String> _deletingIds = <String>{};
 
   @override
   void dispose() {
@@ -4261,8 +4404,7 @@ class _AdminQuizPageState extends State<AdminQuizPage> {
           question.question.toLowerCase().contains(query) ||
           question.category.toLowerCase().contains(query);
       final matchesDifficulty =
-          _difficultyFilter == null ||
-          question.difficulty == _difficultyFilter;
+          _difficultyFilter == null || question.difficulty == _difficultyFilter;
       final matchesStatus =
           _activeFilter == null || question.isActive == _activeFilter;
       return matchesQuery && matchesDifficulty && matchesStatus;
@@ -4280,9 +4422,8 @@ class _AdminQuizPageState extends State<AdminQuizPage> {
                   Expanded(
                     child: Text(
                       'Kelola Soal Kuis',
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(fontWeight: FontWeight.bold),
                     ),
                   ),
                   FilledButton.icon(
@@ -4330,9 +4471,8 @@ class _AdminQuizPageState extends State<AdminQuizPage> {
                     ChoiceChip(
                       label: Text(difficulty.label),
                       selected: _difficultyFilter == difficulty,
-                      onSelected: (_) => setState(
-                        () => _difficultyFilter = difficulty,
-                      ),
+                      onSelected: (_) =>
+                          setState(() => _difficultyFilter = difficulty),
                     ),
                   ],
                   const SizedBox(width: 16),
@@ -4361,12 +4501,18 @@ class _AdminQuizPageState extends State<AdminQuizPage> {
               child: Text(
                 '${filteredQuestions.length} soal ditampilkan',
                 style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
             Expanded(
-              child: filteredQuestions.isEmpty
+              child: quizQuestions.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'Belum ada soal kuis. Tambahkan soal pertama untuk memulai.',
+                      ),
+                    )
+                  : filteredQuestions.isEmpty
                   ? const Center(child: Text('Soal tidak ditemukan.'))
                   : ListView.builder(
                       padding: const EdgeInsets.all(20),
@@ -4389,7 +4535,36 @@ class _AdminQuizPageState extends State<AdminQuizPage> {
                               '${question.category} · ${question.difficulty.label} · '
                               'Pilihan ganda · ${question.isActive ? 'Aktif' : 'Nonaktif'}',
                             ),
-                            isThreeLine: true,
+                            trailing: Wrap(
+                              children: [
+                                IconButton(
+                                  key: ValueKey('edit-quiz-${question.id}'),
+                                  tooltip: 'Edit soal',
+                                  onPressed: _deletingIds.contains(question.id)
+                                      ? null
+                                      : () => _editQuestion(question),
+                                  icon: const Icon(Icons.edit_outlined),
+                                ),
+                                IconButton(
+                                  key: ValueKey('delete-quiz-${question.id}'),
+                                  tooltip: 'Hapus soal',
+                                  onPressed:
+                                      !question.isActive ||
+                                          _deletingIds.contains(question.id)
+                                      ? null
+                                      : () => _deactivateQuestion(question),
+                                  icon: _deletingIds.contains(question.id)
+                                      ? const SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : const Icon(Icons.delete_outline),
+                                ),
+                              ],
+                            ),
                           ),
                         );
                       },
@@ -4404,8 +4579,9 @@ class _AdminQuizPageState extends State<AdminQuizPage> {
 
 class _QuizQuestionFormDialog extends StatefulWidget {
   final Future<String?> Function(QuizQuestion question) onSave;
+  final QuizQuestion? initialQuestion;
 
-  const _QuizQuestionFormDialog({required this.onSave});
+  const _QuizQuestionFormDialog({required this.onSave, this.initialQuestion});
 
   @override
   State<_QuizQuestionFormDialog> createState() =>
@@ -4414,15 +4590,31 @@ class _QuizQuestionFormDialog extends StatefulWidget {
 
 class _QuizQuestionFormDialogState extends State<_QuizQuestionFormDialog> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
-  final List<String> _options = List.filled(4, '');
-  String _question = '';
-  String _explanation = '';
-  String _category = categoryData.first['name'] as String;
-  QuizDifficulty _difficulty = QuizDifficulty.easy;
-  int _correctAnswer = 0;
-  bool _isActive = true;
+  late final List<String> _options;
+  late String _question;
+  late String _explanation;
+  late String _category;
+  late QuizDifficulty _difficulty;
+  late int _correctAnswer;
+  late bool _isActive;
   bool _isSaving = false;
   String? _saveError;
+
+  @override
+  void initState() {
+    super.initState();
+    final initialQuestion = widget.initialQuestion;
+    _options = initialQuestion == null
+        ? List.filled(4, '')
+        : List<String>.of(initialQuestion.options);
+    _question = initialQuestion?.question ?? '';
+    _explanation = initialQuestion?.explanation ?? '';
+    _category =
+        initialQuestion?.category ?? categoryData.first['name'] as String;
+    _difficulty = initialQuestion?.difficulty ?? QuizDifficulty.easy;
+    _correctAnswer = initialQuestion?.correctAnswer ?? 0;
+    _isActive = initialQuestion?.isActive ?? true;
+  }
 
   Future<void> _submit() async {
     if (_isSaving || !(_formKey.currentState?.validate() ?? false)) return;
@@ -4432,7 +4624,7 @@ class _QuizQuestionFormDialogState extends State<_QuizQuestionFormDialog> {
     });
 
     final question = QuizQuestion(
-      id: newQuizQuestionId(),
+      id: widget.initialQuestion?.id ?? newQuizQuestionId(),
       question: _question.trim(),
       options: _options.map((option) => option.trim()).toList(),
       correctAnswer: _correctAnswer,
@@ -4457,7 +4649,7 @@ class _QuizQuestionFormDialogState extends State<_QuizQuestionFormDialog> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return AlertDialog(
-      title: const Text('Tambah Soal'),
+      title: Text(widget.initialQuestion == null ? 'Tambah Soal' : 'Edit Soal'),
       content: SizedBox(
         width: 520,
         child: SingleChildScrollView(
@@ -4481,7 +4673,9 @@ class _QuizQuestionFormDialogState extends State<_QuizQuestionFormDialog> {
                 DropdownButtonFormField<String>(
                   key: const ValueKey('quiz-category-field'),
                   initialValue: _category,
-                  decoration: const InputDecoration(labelText: 'Kategori materi'),
+                  decoration: const InputDecoration(
+                    labelText: 'Kategori materi',
+                  ),
                   items: categoryData
                       .map(
                         (item) => DropdownMenuItem<String>(
@@ -4502,7 +4696,9 @@ class _QuizQuestionFormDialogState extends State<_QuizQuestionFormDialog> {
                 DropdownButtonFormField<QuizDifficulty>(
                   key: const ValueKey('quiz-difficulty-field'),
                   initialValue: _difficulty,
-                  decoration: const InputDecoration(labelText: 'Tingkat kesulitan'),
+                  decoration: const InputDecoration(
+                    labelText: 'Tingkat kesulitan',
+                  ),
                   items: QuizDifficulty.values
                       .map(
                         (difficulty) => DropdownMenuItem(
@@ -4511,13 +4707,14 @@ class _QuizQuestionFormDialogState extends State<_QuizQuestionFormDialog> {
                         ),
                       )
                       .toList(),
-                  validator: (value) => value == null
-                      ? 'Tingkat kesulitan wajib dipilih.'
-                      : null,
+                  validator: (value) =>
+                      value == null ? 'Tingkat kesulitan wajib dipilih.' : null,
                   onChanged: _isSaving
                       ? null
                       : (value) {
-                          if (value != null) setState(() => _difficulty = value);
+                          if (value != null) {
+                            setState(() => _difficulty = value);
+                          }
                         },
                 ),
                 const ListTile(
@@ -4607,7 +4804,11 @@ class _QuizQuestionFormDialogState extends State<_QuizQuestionFormDialog> {
                   height: 18,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Text('Simpan Soal'),
+              : Text(
+                  widget.initialQuestion == null
+                      ? 'Simpan Soal'
+                      : 'Simpan Perubahan',
+                ),
         ),
       ],
     );

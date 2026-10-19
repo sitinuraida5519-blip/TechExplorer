@@ -85,9 +85,7 @@ void main() {
         findsOneWidget,
       );
 
-      await tester.tap(
-        find.byKey(ValueKey('difficulty-${difficulty.name}')),
-      );
+      await tester.tap(find.byKey(ValueKey('difficulty-${difficulty.name}')));
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('start-quiz')));
       await tester.pump();
@@ -109,9 +107,7 @@ void main() {
       difficulty: QuizDifficulty.easy,
     );
     await tester.pumpWidget(
-      MaterialApp(
-        home: QuizPage(questionBank: [easyQuestion]),
-      ),
+      MaterialApp(home: QuizPage(questionBank: [easyQuestion])),
     );
 
     expect(find.text('Tidak tersedia'), findsNWidgets(2));
@@ -120,10 +116,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('start-quiz')));
     await tester.pump();
 
-    expect(
-      find.text('Belum ada soal untuk tingkat Sulit.'),
-      findsOneWidget,
-    );
+    expect(find.text('Belum ada soal untuk tingkat Sulit.'), findsOneWidget);
     expect(find.text('Pilih Tingkat Kesulitan'), findsOneWidget);
     expect(find.text('Sisa Waktu'), findsNothing);
   });
@@ -247,9 +240,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: AdminMaterialPage(
-            onChanged: () => changeNotifications++,
-          ),
+          body: AdminMaterialPage(onChanged: () => changeNotifications++),
         ),
       ),
     );
@@ -257,15 +248,19 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      tester.widget<TextFormField>(
-        find.byKey(const ValueKey('material-title-field')),
-      ).initialValue,
+      tester
+          .widget<TextFormField>(
+            find.byKey(const ValueKey('material-title-field')),
+          )
+          .initialValue,
       selected.title,
     );
     expect(
-      tester.widget<TextFormField>(
-        find.byKey(const ValueKey('material-content-field')),
-      ).initialValue,
+      tester
+          .widget<TextFormField>(
+            find.byKey(const ValueKey('material-content-field')),
+          )
+          .initialValue,
       selected.content,
     );
 
@@ -293,14 +288,23 @@ void main() {
     expect(updated.title, 'Judul Materi Diperbarui');
     expect(updated.description, 'Deskripsi materi yang telah diperbarui.');
     expect(updated.content, 'Isi materi terbaru.');
-    expect(materials.singleWhere((item) => item.id == otherId).title, otherTitle);
+    expect(
+      materials.singleWhere((item) => item.id == otherId).title,
+      otherTitle,
+    );
     expect(changeNotifications, 1);
 
     final restored = await MaterialCatalogStore().load();
     expect(restored, isNotNull);
     expect(restored!.length, originalCatalog.length);
-    expect(restored.singleWhere((item) => item.id == selectedId).title, updated.title);
-    expect(restored.singleWhere((item) => item.id == otherId).title, otherTitle);
+    expect(
+      restored.singleWhere((item) => item.id == selectedId).title,
+      updated.title,
+    );
+    expect(
+      restored.singleWhere((item) => item.id == otherId).title,
+      otherTitle,
+    );
 
     final history = MaterialHistoryStore(userEmail: 'admin@example.com');
     await history.load();
@@ -341,7 +345,10 @@ void main() {
     );
     await tester.tap(find.byKey(ValueKey('edit-material-${material.id}')));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const ValueKey('material-title-field')), '');
+    await tester.enterText(
+      find.byKey(const ValueKey('material-title-field')),
+      '',
+    );
     await tester.pump();
     await tester.ensureVisible(find.byKey(const ValueKey('save-material')));
     await tester.tap(find.byKey(const ValueKey('save-material')));
@@ -407,122 +414,134 @@ void main() {
     expect(materials.first.title, originalTitle);
   });
 
-  testWidgets('admin adds a persisted question that appears in its level quiz', (
-    WidgetTester tester,
-  ) async {
-    tester.view.physicalSize = const Size(800, 1000);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    SharedPreferences.setMockInitialValues({});
-    final originalQuestions = List<QuizQuestion>.of(quizQuestions);
-    addTearDown(() {
-      quizQuestions
-        ..clear()
-        ..addAll(originalQuestions);
+  testWidgets(
+    'admin adds a persisted question that appears in its level quiz',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(800, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
       SharedPreferences.setMockInitialValues({});
-    });
+      final originalQuestions = List<QuizQuestion>.of(quizQuestions);
+      addTearDown(() {
+        quizQuestions
+          ..clear()
+          ..addAll(originalQuestions);
+        SharedPreferences.setMockInitialValues({});
+      });
 
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(body: AdminQuizPage()),
-      ),
-    );
-    await tester.tap(find.byKey(const ValueKey('add-quiz-question')));
-    await tester.pumpAndSettle();
-    await fillQuizQuestionForm(tester);
-
-    await tester.ensureVisible(find.byKey(const ValueKey('quiz-category-field')));
-    await tester.tap(find.byKey(const ValueKey('quiz-category-field')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Networking').last);
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byKey(const ValueKey('quiz-difficulty-field')));
-    await tester.tap(find.byKey(const ValueKey('quiz-difficulty-field')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Sedang').last);
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(
-      find.byKey(const ValueKey('quiz-correct-answer-field')),
-    );
-    await tester.tap(find.byKey(const ValueKey('quiz-correct-answer-field')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Pilihan C').last);
-    await tester.pumpAndSettle();
-
-    await tester.ensureVisible(find.byKey(const ValueKey('save-quiz-question')));
-    await tester.tap(find.byKey(const ValueKey('save-quiz-question')));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-
-    final added = quizQuestions.singleWhere(
-      (question) => question.question == 'Pertanyaan admin baru?',
-    );
-    expect(added.options, ['Jawaban A', 'Jawaban B', 'Jawaban C', 'Jawaban D']);
-    expect(added.correctAnswer, 2);
-    expect(added.category, 'Networking');
-    expect(added.difficulty, QuizDifficulty.medium);
-    expect(added.isActive, isTrue);
-    await tester.ensureVisible(
-      find.byKey(const ValueKey('quiz-question-search')),
-    );
-    await tester.enterText(
-      find.byKey(const ValueKey('quiz-question-search')),
-      added.question,
-    );
-    await tester.pump();
-    expect(
-      find.text('Networking · Sedang · Pilihan ganda · Aktif'),
-      findsOneWidget,
-    );
-
-    final storedQuestions = await QuizQuestionStore().load();
-    expect(storedQuestions, hasLength(1));
-    expect(storedQuestions!.single.id, added.id);
-
-    final historyCount = quizHistory.length;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: QuizPage(
-          questionBank: quizQuestions,
-          duration: const Duration(minutes: 2),
-        ),
-      ),
-    );
-    await startQuiz(tester, difficulty: QuizDifficulty.medium);
-    final mediumQuestions = questionsForDifficulty(
-      quizQuestions,
-      QuizDifficulty.medium,
-    );
-    expect(mediumQuestions.last.id, added.id);
-    for (var index = 0; index < mediumQuestions.length; index++) {
-      final question = mediumQuestions[index];
-      expect(find.text(question.question), findsOneWidget);
-      await tester.ensureVisible(
-        find.text(question.options[question.correctAnswer]),
+      await tester.pumpWidget(
+        const MaterialApp(home: Scaffold(body: AdminQuizPage())),
       );
-      await tester.tap(find.text(question.options[question.correctAnswer]));
+      await tester.tap(find.byKey(const ValueKey('add-quiz-question')));
+      await tester.pumpAndSettle();
+      await fillQuizQuestionForm(tester);
+
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('quiz-category-field')),
+      );
+      await tester.tap(find.byKey(const ValueKey('quiz-category-field')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Networking').last);
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('quiz-difficulty-field')),
+      );
+      await tester.tap(find.byKey(const ValueKey('quiz-difficulty-field')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Sedang').last);
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('quiz-correct-answer-field')),
+      );
+      await tester.tap(find.byKey(const ValueKey('quiz-correct-answer-field')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pilihan C').last);
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('save-quiz-question')),
+      );
+      await tester.tap(find.byKey(const ValueKey('save-quiz-question')));
       await tester.pump();
-      final nextLabel = index == mediumQuestions.length - 1
-          ? 'Selesai'
-          : 'Soal Berikutnya';
-      await tester.ensureVisible(find.text(nextLabel));
-      await tester.pump(const Duration(milliseconds: 250));
-      await tester.tap(find.text(nextLabel));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      final added = quizQuestions.singleWhere(
+        (question) => question.question == 'Pertanyaan admin baru?',
+      );
+      expect(added.options, [
+        'Jawaban A',
+        'Jawaban B',
+        'Jawaban C',
+        'Jawaban D',
+      ]);
+      expect(added.correctAnswer, 2);
+      expect(added.category, 'Networking');
+      expect(added.difficulty, QuizDifficulty.medium);
+      expect(added.isActive, isTrue);
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('quiz-question-search')),
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('quiz-question-search')),
+        added.question,
+      );
       await tester.pump();
-    }
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(find.byType(QuizResultPage), findsOneWidget);
-    expect(find.text('100'), findsOneWidget);
-    expect(
-      find.text('${mediumQuestions.length} benar dari ${mediumQuestions.length} soal'),
-      findsOneWidget,
-    );
-    expect(quizHistory, hasLength(historyCount + 1));
-    expect(quizHistory.last['correct'], mediumQuestions.length);
-    expect(quizHistory.last['total'], mediumQuestions.length);
-    expect(quizHistory.last['difficulty'], 'medium');
-  });
+      expect(
+        find.text('Networking · Sedang · Pilihan ganda · Aktif'),
+        findsOneWidget,
+      );
+
+      final storedQuestions = await QuizQuestionStore().load();
+      expect(storedQuestions, hasLength(1));
+      expect(storedQuestions!.single.id, added.id);
+
+      final historyCount = quizHistory.length;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: QuizPage(
+            questionBank: quizQuestions,
+            duration: const Duration(minutes: 2),
+          ),
+        ),
+      );
+      await startQuiz(tester, difficulty: QuizDifficulty.medium);
+      final mediumQuestions = questionsForDifficulty(
+        quizQuestions,
+        QuizDifficulty.medium,
+      );
+      expect(mediumQuestions.last.id, added.id);
+      for (var index = 0; index < mediumQuestions.length; index++) {
+        final question = mediumQuestions[index];
+        expect(find.text(question.question), findsOneWidget);
+        await tester.ensureVisible(
+          find.text(question.options[question.correctAnswer]),
+        );
+        await tester.tap(find.text(question.options[question.correctAnswer]));
+        await tester.pump();
+        final nextLabel = index == mediumQuestions.length - 1
+            ? 'Selesai'
+            : 'Soal Berikutnya';
+        await tester.ensureVisible(find.text(nextLabel));
+        await tester.pump(const Duration(milliseconds: 250));
+        await tester.tap(find.text(nextLabel));
+        await tester.pump();
+      }
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byType(QuizResultPage), findsOneWidget);
+      expect(find.text('100'), findsOneWidget);
+      expect(
+        find.text(
+          '${mediumQuestions.length} benar dari ${mediumQuestions.length} soal',
+        ),
+        findsOneWidget,
+      );
+      expect(quizHistory, hasLength(historyCount + 1));
+      expect(quizHistory.last['correct'], mediumQuestions.length);
+      expect(quizHistory.last['total'], mediumQuestions.length);
+      expect(quizHistory.last['difficulty'], 'medium');
+    },
+  );
 
   testWidgets('new question form rejects missing question and choices', (
     WidgetTester tester,
@@ -562,36 +581,214 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('save-quiz-question')));
     await tester.pump();
 
-    expect(find.text('Soal gagal disimpan. Periksa penyimpanan lalu coba lagi.'), findsOneWidget);
+    expect(
+      find.text('Soal gagal disimpan. Periksa penyimpanan lalu coba lagi.'),
+      findsOneWidget,
+    );
     expect(find.text('Soal gagal tersimpan'), findsOneWidget);
     expect(quizQuestions, hasLength(originalCount));
     expect(await QuizQuestionStore().load(), isEmpty);
   });
 
-  test('question store rejects duplicate IDs and inactive questions are filtered', () async {
+  test(
+    'question store rejects duplicate IDs and inactive questions are filtered',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = QuizQuestionStore();
+      final existing = quizQuestions.first;
+      final duplicate = QuizQuestion(
+        id: existing.id,
+        question: 'ID duplikat',
+        options: const ['A', 'B', 'C', 'D'],
+        correctAnswer: 0,
+      );
+      expect(
+        await store.add(duplicate, existingQuestions: quizQuestions),
+        QuizQuestionSaveResult.duplicateId,
+      );
+      expect(await store.load(), isEmpty);
+
+      final inactive = QuizQuestion(
+        question: 'Soal nonaktif',
+        options: const ['A', 'B', 'C', 'D'],
+        correctAnswer: 0,
+        difficulty: QuizDifficulty.easy,
+        isActive: false,
+      );
+      expect(questionsForDifficulty([inactive], QuizDifficulty.easy), isEmpty);
+    },
+  );
+
+  test('question store updates by ID and persists the unchanged ID', () async {
     SharedPreferences.setMockInitialValues({});
     final store = QuizQuestionStore();
-    final existing = quizQuestions.first;
-    final duplicate = QuizQuestion(
-      id: existing.id,
-      question: 'ID duplikat',
+    final question = QuizQuestion(
+      id: 'editable-question',
+      question: 'Pertanyaan lama',
+      options: const ['A', 'B', 'C', 'D'],
+      correctAnswer: 1,
+    );
+    quizQuestions.add(question);
+    addTearDown(
+      () => quizQuestions.removeWhere((item) => item.id == question.id),
+    );
+
+    final updated = question.copyWith(question: 'Pertanyaan baru');
+    expect(
+      await store.update(updated, existingQuestions: quizQuestions),
+      QuizQuestionMutationResult.saved,
+    );
+    final reloaded = await QuizQuestionStore().load();
+    expect(reloaded, hasLength(1));
+    expect(reloaded!.single.id, question.id);
+    expect(reloaded.single.question, 'Pertanyaan baru');
+    expect(
+      await store.update(updated, existingQuestions: const <QuizQuestion>[]),
+      QuizQuestionMutationResult.notFound,
+    );
+  });
+
+  testWidgets('admin edits a question in place and persists the changes', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    SharedPreferences.setMockInitialValues({});
+    final question = QuizQuestion(
+      id: 'admin-edit-question',
+      question: 'Pertanyaan sebelum edit',
+      options: const ['Jawaban A', 'Jawaban B', 'Jawaban C', 'Jawaban D'],
+      correctAnswer: 1,
+      explanation: 'Pembahasan lama',
+    );
+    quizQuestions.add(question);
+    addTearDown(
+      () => quizQuestions.removeWhere((item) => item.id == question.id),
+    );
+    await QuizQuestionStore().update(
+      question,
+      existingQuestions: quizQuestions,
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(home: Scaffold(body: AdminQuizPage())),
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('quiz-question-search')),
+      question.question,
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(ValueKey('edit-quiz-${question.id}')));
+    await tester.pumpAndSettle();
+    expect(find.text('Edit Soal'), findsOneWidget);
+    expect(
+      tester
+          .widget<TextFormField>(
+            find.byKey(const ValueKey('quiz-question-field')),
+          )
+          .initialValue,
+      question.question,
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('quiz-question-field')),
+      'Pertanyaan sesudah edit',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('quiz-option-1')),
+      'Jawaban B diperbarui',
+    );
+    tester.testTextInput.hide();
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('save-quiz-question')));
+    await tester.pumpAndSettle();
+
+    expect(quizQuestions.where((item) => item.id == question.id), hasLength(1));
+    final edited = quizQuestions.singleWhere((item) => item.id == question.id);
+    expect(edited.question, 'Pertanyaan sesudah edit');
+    expect(edited.options[1], 'Jawaban B diperbarui');
+    expect(edited.correctAnswer, 1);
+    expect(find.text('Perubahan soal berhasil disimpan.'), findsOneWidget);
+    final stored = await QuizQuestionStore().load();
+    expect(stored, hasLength(1));
+    expect(stored!.single.id, question.id);
+    expect(stored.single.question, 'Pertanyaan sesudah edit');
+  });
+
+  testWidgets('admin confirms soft deletion and cancel keeps question active', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    SharedPreferences.setMockInitialValues({});
+    final selected = QuizQuestion(
+      id: 'admin-delete-question',
+      question: 'Soal yang akan dinonaktifkan',
       options: const ['A', 'B', 'C', 'D'],
       correctAnswer: 0,
+    );
+    final other = QuizQuestion(
+      id: 'admin-keep-question',
+      question: 'Soal yang tetap aktif',
+      options: const ['A', 'B', 'C', 'D'],
+      correctAnswer: 0,
+    );
+    quizQuestions.addAll([selected, other]);
+    addTearDown(
+      () => quizQuestions.removeWhere(
+        (item) => item.id == selected.id || item.id == other.id,
+      ),
+    );
+    final store = QuizQuestionStore();
+    await store.update(selected, existingQuestions: quizQuestions);
+    await store.update(other, existingQuestions: quizQuestions);
+
+    await tester.pumpWidget(
+      const MaterialApp(home: Scaffold(body: AdminQuizPage())),
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('quiz-question-search')),
+      selected.question,
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(ValueKey('delete-quiz-${selected.id}')));
+    await tester.pumpAndSettle();
+    expect(find.text('Hapus Soal Kuis?'), findsOneWidget);
+    await tester.tap(find.byKey(ValueKey('cancel-delete-quiz-${selected.id}')));
+    await tester.pumpAndSettle();
+    expect(selected.isActive, isTrue);
+
+    await tester.tap(find.byKey(ValueKey('delete-quiz-${selected.id}')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(ValueKey('confirm-delete-quiz-${selected.id}')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      quizQuestions.singleWhere((item) => item.id == selected.id).isActive,
+      isFalse,
     );
     expect(
-      await store.add(duplicate, existingQuestions: quizQuestions),
-      QuizQuestionSaveResult.duplicateId,
+      quizQuestions.singleWhere((item) => item.id == other.id).isActive,
+      isTrue,
     );
-    expect(await store.load(), isEmpty);
-
-    final inactive = QuizQuestion(
-      question: 'Soal nonaktif',
-      options: const ['A', 'B', 'C', 'D'],
-      correctAnswer: 0,
-      difficulty: QuizDifficulty.easy,
-      isActive: false,
+    final stored = await store.load();
+    expect(stored, hasLength(2));
+    expect(
+      stored!.singleWhere((item) => item.id == selected.id).isActive,
+      isFalse,
     );
-    expect(questionsForDifficulty([inactive], QuizDifficulty.easy), isEmpty);
+    expect(stored.singleWhere((item) => item.id == other.id).isActive, isTrue);
+    expect(
+      questionsForDifficulty([
+        quizQuestions.singleWhere((item) => item.id == selected.id),
+      ], selected.difficulty),
+      isEmpty,
+    );
   });
 
   testWidgets('theme preference defaults to light and persists live changes', (
@@ -602,7 +799,10 @@ void main() {
     expect(appThemeController.themeMode, ThemeMode.light);
 
     await tester.pumpWidget(const TechExplorerApp());
-    expect(Theme.of(tester.element(find.byType(Scaffold))).brightness, Brightness.light);
+    expect(
+      Theme.of(tester.element(find.byType(Scaffold))).brightness,
+      Brightness.light,
+    );
     await tester.pump(const Duration(seconds: 2));
     await tester.pumpAndSettle();
     expect(find.byType(LoginPage), findsOneWidget);
@@ -611,13 +811,19 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byType(Switch));
     await tester.pumpAndSettle();
-    expect(Theme.of(tester.element(find.byType(LoginPage))).brightness, Brightness.dark);
+    expect(
+      Theme.of(tester.element(find.byType(LoginPage))).brightness,
+      Brightness.dark,
+    );
     final preferences = await SharedPreferences.getInstance();
     expect(preferences.getString('tech_explorer_theme'), 'dark');
 
     await tester.tap(find.text('Registrasi'));
     await tester.pumpAndSettle();
-    expect(Theme.of(tester.element(find.byType(RegisterPage))).brightness, Brightness.dark);
+    expect(
+      Theme.of(tester.element(find.byType(RegisterPage))).brightness,
+      Brightness.dark,
+    );
     await tester.pageBack();
     await tester.pumpAndSettle();
 
@@ -629,7 +835,10 @@ void main() {
     await tester.tap(find.byType(Switch));
     await tester.pumpAndSettle();
     expect(preferences.getString('tech_explorer_theme'), 'light');
-    expect(Theme.of(tester.element(find.byType(LoginPage))).brightness, Brightness.light);
+    expect(
+      Theme.of(tester.element(find.byType(LoginPage))).brightness,
+      Brightness.light,
+    );
     await appThemeController.setDarkMode(false);
   });
 
@@ -758,10 +967,7 @@ void main() {
       find.text('Waktu habis. Kuis telah diselesaikan otomatis.'),
       findsOneWidget,
     );
-    expect(
-      find.text('1 benar dari ${questions.length} soal'),
-      findsOneWidget,
-    );
+    expect(find.text('1 benar dari ${questions.length} soal'), findsOneWidget);
     expect(quizHistory, hasLength(1));
     expect(quizHistory.single['correct'], 1);
     expect(completionCount, 1);
@@ -851,10 +1057,7 @@ void main() {
     var now = DateTime(2026, 1, 1);
     await tester.pumpWidget(
       MaterialApp(
-        home: QuizPage(
-          duration: const Duration(minutes: 15),
-          clock: () => now,
-        ),
+        home: QuizPage(duration: const Duration(minutes: 15), clock: () => now),
       ),
     );
 
@@ -894,13 +1097,13 @@ void main() {
     await tester.pump();
     expect(find.text(questions[0].question), findsOneWidget);
     final savedAnswer = tester.widget<OutlinedButton>(
-      find.byKey(
-        ValueKey('answer-0-${questions[0].correctAnswer}'),
-      ),
+      find.byKey(ValueKey('answer-0-${questions[0].correctAnswer}')),
     );
     expect(
       savedAnswer.style?.backgroundColor?.resolve({}),
-      Theme.of(tester.element(find.byType(QuizPage))).colorScheme.primaryContainer,
+      Theme.of(tester.element(find.byType(QuizPage)))
+          .colorScheme
+          .primaryContainer,
     );
 
     await tester.ensureVisible(find.text(questions[0].options[0]));
@@ -912,7 +1115,9 @@ void main() {
     );
     expect(
       changedAnswer.style?.backgroundColor?.resolve({}),
-      Theme.of(tester.element(find.byType(QuizPage))).colorScheme.primaryContainer,
+      Theme.of(tester.element(find.byType(QuizPage)))
+          .colorScheme
+          .primaryContainer,
     );
 
     await tester.ensureVisible(find.text('Soal Berikutnya'));
@@ -929,7 +1134,9 @@ void main() {
     );
     expect(
       restoredAnswer.style?.backgroundColor?.resolve({}),
-      Theme.of(tester.element(find.byType(QuizPage))).colorScheme.primaryContainer,
+      Theme.of(tester.element(find.byType(QuizPage)))
+          .colorScheme
+          .primaryContainer,
     );
   });
 
