@@ -138,6 +138,29 @@ void main() {
     );
   });
 
+  testWidgets('login shell fits phone and wide viewports without overflow', (
+    WidgetTester tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    for (final size in [const Size(360, 640), const Size(1100, 820)]) {
+      tester.view.physicalSize = size;
+      await tester.pumpWidget(const MaterialApp(home: LoginPage()));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('login-email-field')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('login-password-field')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('login-button')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    }
+
+    addTearDown(tester.view.resetPhysicalSize);
+  });
+
   test(
     'history persists, moves reopened materials to the top, and deduplicates',
     () async {
@@ -884,6 +907,9 @@ void main() {
 
     for (var index = 1; index < questions.length; index++) {
       final question = questions[index];
+      debugPrint(
+        'Quiz question ${question.question}; answer ${question.options[question.correctAnswer]}; matches ${find.text(question.options[question.correctAnswer]).evaluate().length}',
+      );
       await tester.ensureVisible(
         find.text(question.options[question.correctAnswer]),
       );
@@ -892,6 +918,9 @@ void main() {
       final nextLabel = index == questions.length - 1
           ? 'Selesai'
           : 'Soal Berikutnya';
+      debugPrint(
+        'Quiz action label "$nextLabel": ${find.text(nextLabel).evaluate().length} widgets',
+      );
       await tester.ensureVisible(find.text(nextLabel));
       await tester.tap(find.text(nextLabel));
       await tester.pump();

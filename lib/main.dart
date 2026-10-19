@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -44,9 +45,12 @@ class MyApp extends StatelessWidget {
 // WARNA APLIKASI
 // ============================================================
 
-const Color primaryColor = Color(0xFF1565C0);
-const Color darkBlue = Color(0xFF0D47A1);
-const Color backgroundColor = Color(0xFFF5F8FC);
+const Color primaryColor = Color(0xFF2878FF);
+const Color darkBlue = Color(0xFF0B1530);
+const Color backgroundColor = Color(0xFFF3F6FC);
+const Color electricBlue = Color(0xFF2878FF);
+const Color techCyan = Color(0xFF29D7E8);
+const Color techViolet = Color(0xFF8C68F6);
 
 class ThemeController extends ChangeNotifier {
   static const String _preferenceKey = 'tech_explorer_theme';
@@ -84,53 +88,166 @@ class ThemeController extends ChangeNotifier {
 
 ThemeData buildAppTheme(Brightness brightness) {
   final isDark = brightness == Brightness.dark;
-  final colorScheme = ColorScheme.fromSeed(
-    seedColor: primaryColor,
-    brightness: brightness,
-  ).copyWith(surface: isDark ? const Color(0xFF1B2430) : Colors.white);
-  final background = isDark ? const Color(0xFF111820) : backgroundColor;
+  final colorScheme =
+      ColorScheme.fromSeed(
+        seedColor: electricBlue,
+        brightness: brightness,
+      ).copyWith(
+        primary: isDark ? const Color(0xFF72A7FF) : electricBlue,
+        onPrimary: isDark ? const Color(0xFF061126) : Colors.white,
+        secondary: isDark ? const Color(0xFF54E3ED) : const Color(0xFF008C9E),
+        onSecondary: const Color(0xFF04191D),
+        tertiary: isDark ? const Color(0xFFB49AFF) : techViolet,
+        surface: isDark ? const Color(0xFF121D35) : Colors.white,
+        onSurface: isDark ? const Color(0xFFEAF0FF) : const Color(0xFF17223B),
+        surfaceTint: Colors.transparent,
+      );
+  final background = isDark ? const Color(0xFF091225) : backgroundColor;
+  final outline = isDark ? const Color(0xFF34435F) : const Color(0xFFDCE4F1);
 
   return ThemeData(
     useMaterial3: true,
     fontFamily: 'Poppins',
     colorScheme: colorScheme,
     scaffoldBackgroundColor: background,
+    visualDensity: VisualDensity.standard,
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: {
+        TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
+        TargetPlatform.iOS: FadeUpwardsPageTransitionsBuilder(),
+        TargetPlatform.windows: FadeUpwardsPageTransitionsBuilder(),
+        TargetPlatform.macOS: FadeUpwardsPageTransitionsBuilder(),
+        TargetPlatform.linux: FadeUpwardsPageTransitionsBuilder(),
+      },
+    ),
+    textTheme: ThemeData(brightness: brightness).textTheme.copyWith(
+      headlineSmall: TextStyle(
+        color: colorScheme.onSurface,
+        fontSize: 24,
+        fontWeight: FontWeight.w700,
+      ),
+      titleLarge: TextStyle(
+        color: colorScheme.onSurface,
+        fontSize: 19,
+        fontWeight: FontWeight.w700,
+      ),
+      titleMedium: TextStyle(
+        color: colorScheme.onSurface,
+        fontSize: 16,
+        fontWeight: FontWeight.w600,
+      ),
+      bodyLarge: TextStyle(
+        color: colorScheme.onSurface,
+        fontSize: 15,
+        height: 1.55,
+      ),
+      bodyMedium: TextStyle(
+        color: colorScheme.onSurface,
+        fontSize: 14,
+        height: 1.45,
+      ),
+    ),
     appBarTheme: AppBarTheme(
       backgroundColor: background,
       foregroundColor: colorScheme.onSurface,
       surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      titleTextStyle: TextStyle(
+        color: colorScheme.onSurface,
+        fontSize: 20,
+        fontWeight: FontWeight.w700,
+      ),
     ),
     cardTheme: CardThemeData(
-      color: isDark ? const Color(0xFF1B2430) : Colors.white,
+      color: colorScheme.surface,
       surfaceTintColor: Colors.transparent,
-      elevation: isDark ? 1 : 0,
+      elevation: isDark ? 2 : 1,
+      shadowColor: isDark
+          ? Colors.black.withValues(alpha: 0.2)
+          : const Color(0xFF17366A).withValues(alpha: 0.07),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: outline.withValues(alpha: isDark ? 0.65 : 0.8)),
+      ),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: isDark ? const Color(0xFF25303C) : Colors.white,
+      fillColor: isDark ? const Color(0xFF17233D) : const Color(0xFFF8FAFE),
       hintStyle: TextStyle(color: colorScheme.onSurfaceVariant),
       prefixIconColor: colorScheme.onSurfaceVariant,
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide.none,
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: outline),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide.none,
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: outline),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: colorScheme.secondary, width: 1.7),
       ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: colorScheme.error),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: colorScheme.error, width: 1.7),
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
     ),
     dialogTheme: DialogThemeData(
       backgroundColor: colorScheme.surface,
       surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        minimumSize: const Size(48, 50),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        textStyle: const TextStyle(fontWeight: FontWeight.w700),
+      ),
+    ),
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: ElevatedButton.styleFrom(
+        minimumSize: const Size(48, 50),
+        backgroundColor: electricBlue,
+        foregroundColor: Colors.white,
+        elevation: 2,
+        shadowColor: electricBlue.withValues(alpha: 0.24),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        textStyle: const TextStyle(fontWeight: FontWeight.w700),
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(44, 48),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        side: BorderSide(color: outline),
+      ),
+    ),
+    chipTheme: ChipThemeData(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      side: BorderSide(color: outline),
+      selectedColor: colorScheme.primaryContainer,
+      secondarySelectedColor: colorScheme.secondaryContainer,
+      labelStyle: TextStyle(color: colorScheme.onSurface),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+    ),
+    listTileTheme: ListTileThemeData(
+      iconColor: colorScheme.primary,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     ),
     bottomNavigationBarTheme: BottomNavigationBarThemeData(
       backgroundColor: colorScheme.surface,
       selectedItemColor: colorScheme.primary,
       unselectedItemColor: colorScheme.onSurfaceVariant,
+      elevation: 12,
+      type: BottomNavigationBarType.fixed,
+      selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w700),
+      showUnselectedLabels: true,
     ),
     dividerTheme: DividerThemeData(color: colorScheme.outlineVariant),
     snackBarTheme: SnackBarThemeData(
@@ -139,6 +256,382 @@ ThemeData buildAppTheme(Brightness brightness) {
     ),
   );
 }
+
+class AnimatedTechBackground extends StatefulWidget {
+  final Widget child;
+
+  const AnimatedTechBackground({super.key, required this.child});
+
+  @override
+  State<AnimatedTechBackground> createState() => _AnimatedTechBackgroundState();
+}
+
+class _AnimatedTechBackgroundState extends State<AnimatedTechBackground>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2800),
+  )..forward();
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.of(context).disableAnimations) {
+      _controller.stop();
+      _controller.value = 1;
+    } else if (!_controller.isAnimating && _controller.value == 0) {
+      _controller.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        final phase = _controller.value;
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment(-1 + phase * 0.35, -1),
+              end: Alignment(1, 1 - phase * 0.3),
+              colors: [
+                const Color(0xFF071127),
+                Color.lerp(
+                  const Color(0xFF102B66),
+                  const Color(0xFF25306D),
+                  phase,
+                )!,
+                const Color(0xFF101B3C),
+              ],
+            ),
+          ),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              CustomPaint(painter: _CircuitPatternPainter(phase)),
+              widget.child,
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _CircuitPatternPainter extends CustomPainter {
+  final double phase;
+
+  const _CircuitPatternPainter(this.phase);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final linePaint = Paint()
+      ..color = const Color(0xFF83DFFF).withValues(alpha: 0.11)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+    final glowPaint = Paint()
+      ..color = const Color(0xFF57CFFF).withValues(alpha: 0.18)
+      ..style = PaintingStyle.fill;
+    final shift = phase * 46;
+    final path = Path();
+
+    for (var row = 0; row < 6; row++) {
+      final y = size.height * (0.12 + row * 0.16) + shift;
+      final startX = size.width * (row.isEven ? 0.58 : 0.72);
+      final endX = size.width * (row.isEven ? 1.12 : 0.98);
+      path
+        ..moveTo(startX, y)
+        ..lineTo(startX + 24, y)
+        ..lineTo(startX + 24, y + 22)
+        ..lineTo(endX, y + 22);
+      canvas.drawCircle(Offset(startX + 24, y), 2.2, glowPaint);
+    }
+    for (var column = 0; column < 5; column++) {
+      final x = size.width * (0.08 + column * 0.2) - shift;
+      path
+        ..moveTo(x, size.height * 0.04)
+        ..lineTo(x, size.height * 0.1)
+        ..lineTo(x + 26, size.height * 0.1)
+        ..lineTo(x + 26, size.height * 0.18);
+    }
+    canvas.drawPath(path, linePaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _CircuitPatternPainter oldDelegate) =>
+      oldDelegate.phase != phase;
+}
+
+class TechBrandMark extends StatelessWidget {
+  final double size;
+
+  const TechBrandMark({super.key, this.size = 72});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(size * 0.28),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF5DA7FF), Color(0xFF37D8E8), Color(0xFF8C68F6)],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: techCyan.withValues(alpha: 0.22),
+            blurRadius: 24,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Icon(Icons.memory_rounded, size: size * 0.57, color: Colors.white),
+    );
+  }
+}
+
+class GlassPanel extends StatelessWidget {
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+
+  const GlassPanel({
+    super.key,
+    required this.child,
+    this.padding = const EdgeInsets.all(24),
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(26),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: Container(
+          padding: padding,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.09),
+            borderRadius: BorderRadius.circular(26),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.19)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.16),
+                blurRadius: 28,
+                offset: const Offset(0, 16),
+              ),
+            ],
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+class GradientActionButton extends StatelessWidget {
+  final VoidCallback? onPressed;
+  final Widget child;
+  final bool isLoading;
+
+  const GradientActionButton({
+    super.key,
+    required this.onPressed,
+    required this.child,
+    this.isLoading = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null && !isLoading;
+    return AnimatedOpacity(
+      duration: const Duration(milliseconds: 180),
+      opacity: enabled ? 1 : 0.65,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          gradient: const LinearGradient(
+            colors: [Color(0xFF3185FF), Color(0xFF25C7E3)],
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: electricBlue.withValues(alpha: 0.3),
+              blurRadius: 20,
+              offset: const Offset(0, 9),
+            ),
+          ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: enabled ? onPressed : null,
+            child: SizedBox(
+              height: 54,
+              child: Center(
+                child: isLoading
+                    ? const SizedBox(
+                        width: 21,
+                        height: 21,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : DefaultTextStyle.merge(
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        child: child,
+                      ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class AuthScreenShell extends StatelessWidget {
+  final Animation<double> animation;
+  final String subtitle;
+  final Widget child;
+  final Widget? footer;
+  final VoidCallback? onBack;
+
+  const AuthScreenShell({
+    super.key,
+    required this.animation,
+    required this.subtitle,
+    required this.child,
+    this.footer,
+    this.onBack,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedTechBackground(
+      child: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(22, 22, 22, 28),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: constraints.maxHeight > 50
+                    ? constraints.maxHeight - 50
+                    : 0,
+              ),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 470),
+                  child: FadeTransition(
+                    opacity: CurvedAnimation(
+                      parent: animation,
+                      curve: Curves.easeOut,
+                    ),
+                    child: SlideTransition(
+                      position:
+                          Tween<Offset>(
+                            begin: const Offset(0, 0.055),
+                            end: Offset.zero,
+                          ).animate(
+                            CurvedAnimation(
+                              parent: animation,
+                              curve: Curves.easeOutCubic,
+                            ),
+                          ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Row(
+                            children: [
+                              if (onBack != null)
+                                IconButton(
+                                  onPressed: onBack,
+                                  tooltip: 'Kembali',
+                                  color: Colors.white,
+                                  icon: const Icon(Icons.arrow_back_rounded),
+                                )
+                              else
+                                const SizedBox(width: 48),
+                              const Spacer(),
+                              const TechBrandMark(size: 70),
+                              const Spacer(),
+                              const SizedBox(width: 48),
+                            ],
+                          ),
+                          const SizedBox(height: 15),
+                          const Text(
+                            'TechExplorer',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 27,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            subtitle,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.72),
+                              fontSize: 12,
+                              height: 1.5,
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          GlassPanel(child: child),
+                          if (footer != null) ...[
+                            const SizedBox(height: 14),
+                            footer!,
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+InputDecoration _authInputDecoration(String label, IconData icon) =>
+    InputDecoration(
+      labelText: label,
+      prefixIcon: Icon(icon),
+      labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.68)),
+      filled: true,
+      fillColor: Colors.white.withValues(alpha: 0.07),
+      prefixIconColor: const Color(0xFF78DFEA),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 17),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.18)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.18)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: const BorderSide(color: Color(0xFF61DDEB), width: 1.5),
+      ),
+    );
 
 // ============================================================
 // MODEL MATERI
@@ -1102,7 +1595,10 @@ class TechExplorerApp extends StatelessWidget {
 }
 
 class ThemeModeTile extends StatelessWidget {
-  const ThemeModeTile({super.key});
+  final Color? textColor;
+  final Color? secondaryTextColor;
+
+  const ThemeModeTile({super.key, this.textColor, this.secondaryTextColor});
 
   @override
   Widget build(BuildContext context) {
@@ -1113,8 +1609,16 @@ class ThemeModeTile extends StatelessWidget {
         isDark ? Icons.dark_mode_outlined : Icons.light_mode_outlined,
         color: colorScheme.primary,
       ),
-      title: Text(isDark ? 'Mode Gelap' : 'Mode Terang'),
-      subtitle: Text('Beralih ke ${isDark ? 'Mode Terang' : 'Mode Gelap'}'),
+      title: Text(
+        isDark ? 'Mode Gelap' : 'Mode Terang',
+        style: textColor == null ? null : TextStyle(color: textColor),
+      ),
+      subtitle: Text(
+        'Beralih ke ${isDark ? 'Mode Terang' : 'Mode Gelap'}',
+        style: secondaryTextColor == null
+            ? null
+            : TextStyle(color: secondaryTextColor),
+      ),
       value: isDark,
       onChanged: appThemeController.setDarkMode,
     );
@@ -1132,12 +1636,19 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> {
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _entryController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  )..forward();
+  Timer? _navigationTimer;
+
   @override
   void initState() {
     super.initState();
 
-    Timer(const Duration(seconds: 2), () {
+    _navigationTimer = Timer(const Duration(seconds: 2), () {
       if (!mounted) return;
 
       Navigator.pushReplacement(
@@ -1148,47 +1659,67 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   @override
+  void dispose() {
+    _navigationTimer?.cancel();
+    _entryController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: colorScheme.primary,
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 105,
-              height: 105,
-              decoration: BoxDecoration(
-                color: colorScheme.onPrimary,
-                borderRadius: BorderRadius.circular(25),
+      body: AnimatedTechBackground(
+        child: Center(
+          child: FadeTransition(
+            opacity: CurvedAnimation(
+              parent: _entryController,
+              curve: Curves.easeOut,
+            ),
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 0.88, end: 1).animate(
+                CurvedAnimation(
+                  parent: _entryController,
+                  curve: Curves.easeOutCubic,
+                ),
               ),
-              child: Icon(Icons.computer, size: 60, color: colorScheme.primary),
-            ),
-
-            const SizedBox(height: 25),
-
-            Text(
-              'TechExplorer',
-              style: TextStyle(
-                color: colorScheme.onPrimary,
-                fontSize: 32,
-                fontWeight: FontWeight.bold,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const TechBrandMark(size: 104),
+                  const SizedBox(height: 27),
+                  const Text(
+                    'TechExplorer',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 32,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Belajar Teknik Komputer dan Jaringan',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.74),
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 35),
+                  SizedBox(
+                    width: 94,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: const LinearProgressIndicator(
+                        minHeight: 4,
+                        backgroundColor: Color(0x3356D7EB),
+                        color: Color(0xFF59DCEA),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-
-            const SizedBox(height: 8),
-
-            Text(
-              'Belajar Teknik Komputer dan Jaringan',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: colorScheme.onPrimary, fontSize: 14),
-            ),
-
-            const SizedBox(height: 35),
-
-            CircularProgressIndicator(color: colorScheme.onPrimary),
-          ],
+          ),
         ),
       ),
     );
@@ -1206,13 +1737,20 @@ class LoginPage extends StatefulWidget {
   State<LoginPage> createState() => _LoginPageState();
 }
 
-class _LoginPageState extends State<LoginPage> {
+class _LoginPageState extends State<LoginPage>
+    with SingleTickerProviderStateMixin {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
 
   bool obscurePassword = true;
+  bool _isLoggingIn = false;
+  late final AnimationController _entryController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 850),
+  )..forward();
 
-  void login() {
+  Future<void> login() async {
+    if (_isLoggingIn) return;
     final email = emailController.text.trim();
     final password = passwordController.text.trim();
 
@@ -1220,6 +1758,10 @@ class _LoginPageState extends State<LoginPage> {
       showMessage('Email dan password harus diisi.');
       return;
     }
+
+    setState(() => _isLoggingIn = true);
+    await Future<void>.delayed(const Duration(milliseconds: 220));
+    if (!mounted) return;
 
     if (email == 'admin@gmail.com' && password == 'admin123') {
       Navigator.pushReplacement(
@@ -1245,6 +1787,7 @@ class _LoginPageState extends State<LoginPage> {
         ),
       );
     } else {
+      setState(() => _isLoggingIn = false);
       showMessage('Email atau password salah.');
     }
   }
@@ -1258,150 +1801,127 @@ class _LoginPageState extends State<LoginPage> {
   void dispose() {
     emailController.dispose();
     passwordController.dispose();
+    _entryController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            children: [
-              const SizedBox(height: 40),
-
-              Container(
-                width: 85,
-                height: 85,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(22),
-                ),
-                child: Icon(
-                  Icons.computer,
-                  size: 48,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
+      body: AuthScreenShell(
+        animation: _entryController,
+        subtitle: 'Explore Technology, Expand Your Knowledge',
+        footer: Column(
+          children: [
+            ThemeModeTile(
+              textColor: Colors.white,
+              secondaryTextColor: Colors.white70,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Siswa: siswa@gmail.com / 123456   ·   Admin: admin@gmail.com / admin123',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.58),
+                fontSize: 10,
               ),
-
-              const SizedBox(height: 25),
-
-              Text(
-                'Selamat Datang',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.onSurface,
-                ),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Selamat Datang',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 23,
+                fontWeight: FontWeight.w700,
               ),
-
-              const SizedBox(height: 8),
-
-              Text(
-                'Masuk untuk mulai belajar bersama TechExplorer.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Masuk untuk mulai belajar bersama TechExplorer.',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.7),
+                fontSize: 13,
+                height: 1.45,
               ),
-
-              const SizedBox(height: 40),
-
-              TextField(
-                controller: emailController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: inputDecoration('Email', Icons.email_outlined),
+            ),
+            const SizedBox(height: 22),
+            TextField(
+              key: const ValueKey('login-email-field'),
+              controller: emailController,
+              keyboardType: TextInputType.emailAddress,
+              style: const TextStyle(color: Colors.white),
+              decoration: _authInputDecoration(
+                'Email',
+                Icons.alternate_email_rounded,
               ),
-
-              const SizedBox(height: 18),
-
-              TextField(
-                controller: passwordController,
-                obscureText: obscurePassword,
-                decoration: inputDecoration('Password', Icons.lock_outline)
-                    .copyWith(
-                      suffixIcon: IconButton(
-                        onPressed: () {
-                          setState(() {
-                            obscurePassword = !obscurePassword;
-                          });
-                        },
-                        icon: Icon(
-                          obscurePassword
-                              ? Icons.visibility_off
-                              : Icons.visibility,
-                        ),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              key: const ValueKey('login-password-field'),
+              controller: passwordController,
+              obscureText: obscurePassword,
+              style: const TextStyle(color: Colors.white),
+              decoration:
+                  _authInputDecoration(
+                    'Password',
+                    Icons.lock_outline_rounded,
+                  ).copyWith(
+                    suffixIcon: IconButton(
+                      onPressed: _isLoggingIn
+                          ? null
+                          : () => setState(
+                              () => obscurePassword = !obscurePassword,
+                            ),
+                      color: Colors.white70,
+                      icon: Icon(
+                        obscurePassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
                       ),
                     ),
-              ),
-
-              const SizedBox(height: 28),
-
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: login,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryColor,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+                  ),
+            ),
+            const SizedBox(height: 20),
+            GradientActionButton(
+              key: const ValueKey('login-button'),
+              onPressed: _isLoggingIn ? null : login,
+              isLoading: _isLoggingIn,
+              child: const Text('Login'),
+            ),
+            const SizedBox(height: 8),
+            Center(
+              child: Wrap(
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text(
+                    'Belum memiliki akun?',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.78),
+                      fontSize: 13,
                     ),
                   ),
-                  child: const Text(
-                    'Login',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 15),
-
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text('Belum memiliki akun?'),
                   TextButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const RegisterPage()),
-                      );
-                    },
+                    onPressed: _isLoggingIn
+                        ? null
+                        : () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const RegisterPage(),
+                            ),
+                          ),
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFF6DE5F0),
+                    ),
                     child: const Text('Registrasi'),
                   ),
                 ],
               ),
-
-              const SizedBox(height: 20),
-
-              const Card(child: ThemeModeTile()),
-
-              const SizedBox(height: 12),
-
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(15),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: const Column(
-                  children: [
-                    Text(
-                      'Akun Demo',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    SizedBox(height: 8),
-                    Text('Siswa: siswa@gmail.com / 123456'),
-                    Text('Admin: admin@gmail.com / admin123'),
-                  ],
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -1419,11 +1939,16 @@ class RegisterPage extends StatefulWidget {
   State<RegisterPage> createState() => _RegisterPageState();
 }
 
-class _RegisterPageState extends State<RegisterPage> {
+class _RegisterPageState extends State<RegisterPage>
+    with SingleTickerProviderStateMixin {
   final nameController = TextEditingController();
   final emailController = TextEditingController();
   final classController = TextEditingController();
   final passwordController = TextEditingController();
+  late final AnimationController _entryController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 750),
+  )..forward();
 
   void register() {
     final name = nameController.text.trim();
@@ -1484,54 +2009,74 @@ class _RegisterPageState extends State<RegisterPage> {
     emailController.dispose();
     classController.dispose();
     passwordController.dispose();
+    _entryController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Registrasi')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(25),
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        title: const Text('Registrasi'),
+        backgroundColor: Colors.transparent,
+        foregroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+      ),
+      body: AuthScreenShell(
+        animation: _entryController,
+        subtitle: 'Satu akun untuk mulai menjelajahi teknologi.',
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            const Text(
+              'Buat Akun',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 23,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 18),
             TextField(
               controller: nameController,
-              decoration: inputDecoration('Nama Lengkap', Icons.person_outline),
+              style: const TextStyle(color: Colors.white),
+              decoration: _authInputDecoration(
+                'Nama Lengkap',
+                Icons.person_outline_rounded,
+              ),
             ),
-
-            const SizedBox(height: 15),
-
+            const SizedBox(height: 13),
             TextField(
               controller: emailController,
               keyboardType: TextInputType.emailAddress,
-              decoration: inputDecoration('Email', Icons.email_outlined),
+              style: const TextStyle(color: Colors.white),
+              decoration: _authInputDecoration(
+                'Email',
+                Icons.alternate_email_rounded,
+              ),
             ),
-
-            const SizedBox(height: 15),
-
+            const SizedBox(height: 13),
             TextField(
               controller: classController,
-              decoration: inputDecoration('Kelas', Icons.school_outlined),
+              style: const TextStyle(color: Colors.white),
+              decoration: _authInputDecoration('Kelas', Icons.school_outlined),
             ),
-
-            const SizedBox(height: 15),
-
+            const SizedBox(height: 13),
             TextField(
               controller: passwordController,
               obscureText: true,
-              decoration: inputDecoration('Password', Icons.lock_outline),
-            ),
-
-            const SizedBox(height: 25),
-
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: ElevatedButton(
-                onPressed: register,
-                child: const Text('Daftar'),
+              style: const TextStyle(color: Colors.white),
+              decoration: _authInputDecoration(
+                'Password',
+                Icons.lock_outline_rounded,
               ),
+            ),
+            const SizedBox(height: 22),
+            GradientActionButton(
+              key: const ValueKey('register-button'),
+              onPressed: register,
+              child: const Text('Daftar'),
             ),
           ],
         ),
@@ -1606,7 +2151,25 @@ class _HomePageState extends State<HomePage> {
     ];
 
     return Scaffold(
-      body: pages[currentIndex],
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 220),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (child, animation) => FadeTransition(
+          opacity: animation,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0.015, 0),
+              end: Offset.zero,
+            ).animate(animation),
+            child: child,
+          ),
+        ),
+        child: KeyedSubtree(
+          key: ValueKey(currentIndex),
+          child: pages[currentIndex],
+        ),
+      ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: currentIndex,
         type: BottomNavigationBarType.fixed,
@@ -1661,22 +2224,37 @@ class _HomePageState extends State<HomePage> {
           children: [
             const SizedBox(height: 15),
 
-            Text(
-              'Halo, ${widget.userName}',
-              style: TextStyle(
-                fontSize: 25,
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.onSurface,
-              ),
-            ),
-
-            const SizedBox(height: 5),
-
-            Text(
-              'Siap melanjutkan pembelajaran hari ini?',
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'RUANG BELAJAR',
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: Theme.of(context).colorScheme.secondary,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        'Halo, ${widget.userName}',
+                        style: Theme.of(context).textTheme.headlineSmall,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Siap melanjutkan pembelajaran hari ini?',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const TechBrandMark(size: 48),
+              ],
             ),
 
             const SizedBox(height: 25),
@@ -1704,10 +2282,25 @@ class _HomePageState extends State<HomePage> {
 
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(22),
               decoration: BoxDecoration(
-                color: primaryColor,
-                borderRadius: BorderRadius.circular(20),
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color(0xFF123B83),
+                    Color(0xFF2878FF),
+                    Color(0xFF16AFC7),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: electricBlue.withValues(alpha: 0.2),
+                    blurRadius: 22,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1786,22 +2379,59 @@ class _HomePageState extends State<HomePage> {
                   },
                   child: Container(
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surface,
-                      borderRadius: BorderRadius.circular(18),
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Theme.of(context).colorScheme.surface,
+                          (category['accent'] as Color).withValues(
+                            alpha:
+                                Theme.of(context).brightness == Brightness.dark
+                                ? 0.16
+                                : 0.07,
+                          ),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(19),
+                      border: Border.all(
+                        color: (category['accent'] as Color).withValues(
+                          alpha: 0.22,
+                        ),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: (category['accent'] as Color).withValues(
+                            alpha: 0.08,
+                          ),
+                          blurRadius: 16,
+                          offset: const Offset(0, 7),
+                        ),
+                      ],
                     ),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(
-                          category['icon'] as IconData,
-                          size: 38,
-                          color: Theme.of(context).colorScheme.primary,
+                        Container(
+                          width: 54,
+                          height: 54,
+                          decoration: BoxDecoration(
+                            color: (category['accent'] as Color).withValues(
+                              alpha: 0.13,
+                            ),
+                            borderRadius: BorderRadius.circular(17),
+                          ),
+                          child: Icon(
+                            category['icon'] as IconData,
+                            size: 29,
+                            color: category['accent'] as Color,
+                          ),
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 9),
                         Text(
                           category['name'] as String,
                           textAlign: TextAlign.center,
-                          style: const TextStyle(fontWeight: FontWeight.w600),
+                          style: Theme.of(context).textTheme.labelLarge
+                              ?.copyWith(fontWeight: FontWeight.w700),
                         ),
                       ],
                     ),
@@ -1961,12 +2591,20 @@ class _HomePageState extends State<HomePage> {
 // ============================================================
 
 final List<Map<String, dynamic>> categoryData = [
-  {'name': 'Computer Basics', 'icon': Icons.computer},
-  {'name': 'Hardware', 'icon': Icons.memory},
-  {'name': 'Software', 'icon': Icons.apps},
-  {'name': 'Networking', 'icon': Icons.wifi},
-  {'name': 'Network Devices', 'icon': Icons.router},
-  {'name': 'Troubleshooting', 'icon': Icons.build},
+  {
+    'name': 'Computer Basics',
+    'icon': Icons.computer,
+    'accent': Color(0xFF3785F5),
+  },
+  {'name': 'Hardware', 'icon': Icons.memory, 'accent': Color(0xFF15AFC0)},
+  {'name': 'Software', 'icon': Icons.apps, 'accent': Color(0xFF8C68F6)},
+  {'name': 'Networking', 'icon': Icons.wifi, 'accent': Color(0xFF16A3A8)},
+  {
+    'name': 'Network Devices',
+    'icon': Icons.router,
+    'accent': Color(0xFF4D75DE),
+  },
+  {'name': 'Troubleshooting', 'icon': Icons.build, 'accent': Color(0xFFDB8B3D)},
 ];
 
 // ============================================================
@@ -2307,6 +2945,7 @@ class _MaterialDetailPageState extends State<MaterialDetailPage> {
         title: const Text('Detail Materi'),
         actions: [
           IconButton(
+            tooltip: saved ? 'Hapus bookmark' : 'Simpan bookmark',
             onPressed: () {
               setState(() {
                 if (saved) {
@@ -2329,15 +2968,62 @@ class _MaterialDetailPageState extends State<MaterialDetailPage> {
           children: [
             Container(
               width: double.infinity,
-              height: 180,
+              height: 190,
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(20),
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color(0xFF113979),
+                    Color(0xFF2878FF),
+                    Color(0xFF20BCCD),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: electricBlue.withValues(alpha: 0.19),
+                    blurRadius: 22,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
               ),
-              child: Icon(
-                widget.material.icon,
-                size: 90,
-                color: Theme.of(context).colorScheme.primary,
+              child: Stack(
+                children: [
+                  Positioned(
+                    right: -16,
+                    bottom: -27,
+                    child: Icon(
+                      widget.material.icon,
+                      size: 190,
+                      color: Colors.white.withValues(alpha: 0.08),
+                    ),
+                  ),
+                  Positioned(
+                    left: 22,
+                    bottom: 22,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 13,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(13),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.24),
+                        ),
+                      ),
+                      child: Text(
+                        widget.material.category,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
 
@@ -2346,7 +3032,7 @@ class _MaterialDetailPageState extends State<MaterialDetailPage> {
             Text(
               widget.material.category,
               style: TextStyle(
-                color: Theme.of(context).colorScheme.primary,
+                color: Theme.of(context).colorScheme.secondary,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -2355,17 +3041,16 @@ class _MaterialDetailPageState extends State<MaterialDetailPage> {
 
             Text(
               widget.material.title,
-              style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+              style: Theme.of(context).textTheme.headlineSmall
+                  ?.copyWith(fontSize: 29, height: 1.18),
             ),
 
             const SizedBox(height: 15),
 
             Text(
               widget.material.description,
-              style: TextStyle(
-                fontSize: 16,
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
-                height: 1.5,
               ),
             ),
 
@@ -2380,7 +3065,8 @@ class _MaterialDetailPageState extends State<MaterialDetailPage> {
 
             Text(
               widget.material.content,
-              style: const TextStyle(fontSize: 16, height: 1.7),
+              style: Theme.of(context).textTheme.bodyLarge
+                  ?.copyWith(height: 1.8),
             ),
 
             const SizedBox(height: 25),
@@ -2394,10 +3080,14 @@ class _MaterialDetailPageState extends State<MaterialDetailPage> {
 
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(18),
+              padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(15),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.primary
+                      .withValues(alpha: 0.15),
+                ),
               ),
               child: Text(
                 widget.material.importantPoints,
@@ -2933,10 +3623,9 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Quiz TKJ')),
-      body: SingleChildScrollView(
+      body: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
@@ -2957,8 +3646,14 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
 
             const SizedBox(height: 15),
 
-            LinearProgressIndicator(
-              value: (currentQuestion + 1) / _questions.length,
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: LinearProgressIndicator(
+                value: (currentQuestion + 1) / _questions.length,
+                minHeight: 7,
+                backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                color: Theme.of(context).colorScheme.secondary,
+              ),
             ),
 
             Align(
@@ -2978,90 +3673,178 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
 
             _buildQuestionNavigation(context),
 
-            const SizedBox(height: 24),
+            const SizedBox(height: 14),
 
-            Text(
-              question.question,
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                height: 1.4,
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 13,
+                      ),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Theme.of(context).colorScheme.surface,
+                            Theme.of(context).colorScheme.primary.withValues(
+                              alpha:
+                                  Theme.of(context).brightness ==
+                                      Brightness.dark
+                                  ? 0.13
+                                  : 0.06,
+                            ),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(21),
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.outlineVariant,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'PILIH JAWABAN YANG TEPAT',
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .secondary,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            question.question,
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontSize: 17, height: 1.35),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 15),
+
+                    ...List.generate(question.options.length, (index) {
+                      final selected = selectedAnswer == index;
+
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        width: double.infinity,
+                        child: OutlinedButton(
+                          key: ValueKey('answer-$currentQuestion-$index'),
+                          onPressed: () {
+                            chooseAnswer(index);
+                          },
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.all(18),
+                            alignment: Alignment.centerLeft,
+                            backgroundColor: selected
+                                ? Theme.of(context).colorScheme.primaryContainer
+                                : Theme.of(context).colorScheme.surface,
+                            side: BorderSide(
+                              color: selected
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Theme.of(context).colorScheme.outline,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 30,
+                                height: 30,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: selected
+                                      ? Theme.of(context).colorScheme.primary
+                                      : Theme.of(context)
+                                            .colorScheme
+                                            .primaryContainer,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Text(
+                                  String.fromCharCode(65 + index),
+                                  style: TextStyle(
+                                    color: selected
+                                        ? Theme.of(context)
+                                              .colorScheme
+                                              .onPrimary
+                                        : Theme.of(context)
+                                              .colorScheme
+                                              .onPrimaryContainer,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  question.options[index],
+                                  style: TextStyle(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurface,
+                                    fontWeight: selected
+                                        ? FontWeight.w700
+                                        : FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                              if (selected)
+                                Icon(
+                                  Icons.check_circle_rounded,
+                                  color: Theme.of(context).colorScheme.primary,
+                                  size: 20,
+                                ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
+
+                    const SizedBox(height: 18),
+
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: currentQuestion == 0 || _isFinishing
+                                ? null
+                                : previousQuestion,
+                            icon: const Icon(Icons.chevron_left),
+                            label: const Text('Sebelumnya'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: _isFinishing ? null : nextQuestion,
+                            icon: Icon(
+                              currentQuestion == _questions.length - 1
+                                  ? Icons.check
+                                  : Icons.chevron_right,
+                            ),
+                            label: Text(
+                              currentQuestion == _questions.length - 1
+                                  ? 'Selesai'
+                                  : 'Soal Berikutnya',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-
-            const SizedBox(height: 25),
-
-            ...List.generate(question.options.length, (index) {
-              final selected = selectedAnswer == index;
-
-              return Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                width: double.infinity,
-                child: OutlinedButton(
-                  key: ValueKey('answer-$currentQuestion-$index'),
-                  onPressed: () {
-                    chooseAnswer(index);
-                  },
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.all(18),
-                    alignment: Alignment.centerLeft,
-                    backgroundColor: selected
-                        ? Theme.of(context).colorScheme.primaryContainer
-                        : Theme.of(context).colorScheme.surface,
-                    side: BorderSide(
-                      color: selected
-                          ? Theme.of(context).colorScheme.primary
-                          : Theme.of(context).colorScheme.outline,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  child: Text(
-                    question.options[index],
-                    style: TextStyle(
-                      color: selected
-                          ? Theme.of(context).colorScheme.onPrimaryContainer
-                          : Theme.of(context).colorScheme.onSurface,
-                      fontWeight: selected
-                          ? FontWeight.bold
-                          : FontWeight.normal,
-                    ),
-                  ),
-                ),
-              );
-            }),
-
-            const SizedBox(height: 18),
-
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: currentQuestion == 0 || _isFinishing
-                        ? null
-                        : previousQuestion,
-                    icon: const Icon(Icons.chevron_left),
-                    label: const Text('Sebelumnya'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _isFinishing ? null : nextQuestion,
-                    icon: Icon(
-                      currentQuestion == _questions.length - 1
-                          ? Icons.check
-                          : Icons.chevron_right,
-                    ),
-                    label: Text(
-                      currentQuestion == _questions.length - 1
-                          ? 'Selesai'
-                          : 'Soal Berikutnya',
-                    ),
-                  ),
-                ),
-              ],
             ),
           ],
         ),
@@ -3455,73 +4238,134 @@ class QuizResultPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Hasil Quiz')),
       body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(25),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.assessment_outlined,
-                size: 90,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-
-              const SizedBox(height: 20),
-
-              const Text(
-                'Quiz Selesai',
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-              ),
-
-              if (difficulty != null) ...[
-                const SizedBox(height: 8),
-                Text('Tingkat: ${difficulty!.label}'),
-              ],
-
-              if (timedOut) ...[
-                const SizedBox(height: 12),
-                Text(
-                  'Waktu habis. Kuis telah diselesaikan otomatis.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(22),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: Column(
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(22, 28, 22, 26),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Color(0xFF102F69),
+                        Color(0xFF2878FF),
+                        Color(0xFF18AFC3),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(25),
+                    boxShadow: [
+                      BoxShadow(
+                        color: electricBlue.withValues(alpha: 0.2),
+                        blurRadius: 24,
+                        offset: const Offset(0, 12),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 0, end: nilai / 100),
+                        duration: const Duration(milliseconds: 850),
+                        curve: Curves.easeOutCubic,
+                        builder: (context, progress, _) => SizedBox(
+                          width: 142,
+                          height: 142,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              SizedBox.expand(
+                                child: CircularProgressIndicator(
+                                  value: progress,
+                                  strokeWidth: 8,
+                                  strokeCap: StrokeCap.round,
+                                  backgroundColor: Colors.white24,
+                                  color: const Color(0xFF69E3EC),
+                                ),
+                              ),
+                              Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    '$nilai',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 43,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                  Text(
+                                    'NILAI',
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.7,
+                                      ),
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      const Text(
+                        'Quiz Selesai',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 25,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if (difficulty != null) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          'Tingkat: ${difficulty!.label}',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.78),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 12),
+                      Text(
+                        '$score benar dari $total soal',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (timedOut) ...[
+                  const SizedBox(height: 16),
+                  Text(
+                    'Waktu habis. Kuis telah diselesaikan otomatis.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 18),
+                Text(message, textAlign: TextAlign.center),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.arrow_back_rounded),
+                    label: const Text('Kembali'),
+                  ),
                 ),
               ],
-
-              const SizedBox(height: 20),
-
-              Text(
-                '$nilai',
-                style: TextStyle(
-                  fontSize: 65,
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-              ),
-
-              Text(
-                '$score benar dari $total soal',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              Text(message, textAlign: TextAlign.center),
-
-              const SizedBox(height: 30),
-
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                  },
-                  child: const Text('Kembali'),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -3560,33 +4404,55 @@ class ProfilePage extends StatelessWidget {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            const SizedBox(height: 25),
-
-            CircleAvatar(
-              radius: 50,
-              backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-              child: Icon(
-                Icons.person,
-                size: 55,
-                color: Theme.of(context).colorScheme.primary,
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 26),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color(0xFF102F69),
+                    Color(0xFF2878FF),
+                    Color(0xFF14A9BD),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: Column(
+                children: [
+                  CircleAvatar(
+                    radius: 42,
+                    backgroundColor: Colors.white.withValues(alpha: 0.15),
+                    child: const Icon(
+                      Icons.person_rounded,
+                      size: 45,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 13),
+                  Text(
+                    userName,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    email,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.76),
+                    ),
+                  ),
+                ],
               ),
             ),
-
-            const SizedBox(height: 15),
-
-            Text(
-              userName,
-              style: const TextStyle(fontSize: 23, fontWeight: FontWeight.bold),
-            ),
-
-            Text(
-              email,
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-
-            const SizedBox(height: 30),
+            const SizedBox(height: 22),
 
             Card(
               child: Column(
@@ -3692,7 +4558,25 @@ class _AdminDashboardState extends State<AdminDashboard> {
     ];
 
     return Scaffold(
-      body: pages[currentIndex],
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 220),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (child, animation) => FadeTransition(
+          opacity: animation,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0.015, 0),
+              end: Offset.zero,
+            ).animate(animation),
+            child: child,
+          ),
+        ),
+        child: KeyedSubtree(
+          key: ValueKey(currentIndex),
+          child: pages[currentIndex],
+        ),
+      ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: currentIndex,
         type: BottomNavigationBarType.fixed,
@@ -3738,13 +4622,33 @@ class _AdminDashboardState extends State<AdminDashboard> {
             const SizedBox(height: 15),
 
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'Dashboard Admin',
-                  style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
+                const TechBrandMark(size: 48),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'ADMIN CONSOLE',
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: Theme.of(context).colorScheme.secondary,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        'Dashboard Admin',
+                        style: Theme.of(context).textTheme.headlineSmall,
+                      ),
+                    ],
+                  ),
                 ),
-                IconButton(onPressed: logout, icon: const Icon(Icons.logout)),
+                IconButton(
+                  tooltip: 'Logout',
+                  onPressed: logout,
+                  icon: const Icon(Icons.logout_rounded),
+                ),
               ],
             ),
 
@@ -3821,7 +4725,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 child: ListTile(
                   leading: Icon(
                     category['icon'] as IconData,
-                    color: Theme.of(context).colorScheme.primary,
+                    color: category['accent'] as Color,
                   ),
                   title: Text(category['name'] as String),
                   trailing: Text('$count materi'),
@@ -3835,20 +4739,45 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   Widget statCard(String title, String value, IconData icon) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final accent = switch (icon) {
+      Icons.menu_book => colorScheme.primary,
+      Icons.quiz => colorScheme.secondary,
+      Icons.people => colorScheme.tertiary,
+      _ => const Color(0xFFDF9A4D),
+    };
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(18),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            colorScheme.surface,
+            accent.withValues(
+              alpha: colorScheme.brightness == Brightness.dark ? 0.16 : 0.08,
+            ),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(19),
+        border: Border.all(color: accent.withValues(alpha: 0.18)),
+        boxShadow: [
+          BoxShadow(
+            color: accent.withValues(alpha: 0.08),
+            blurRadius: 16,
+            offset: const Offset(0, 7),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: Theme.of(context).colorScheme.primary, size: 30),
-          const SizedBox(height: 12),
+          Icon(icon, color: accent, size: 27),
+          const SizedBox(height: 10),
           Text(
             value,
-            style: const TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
+            style: Theme.of(context).textTheme.headlineSmall
+                ?.copyWith(fontSize: 24, color: accent),
           ),
           Text(
             title,
