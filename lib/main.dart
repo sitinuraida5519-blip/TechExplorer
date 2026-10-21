@@ -203,28 +203,58 @@ ThemeData buildAppTheme(Brightness brightness) {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
     ),
     filledButtonTheme: FilledButtonThemeData(
-      style: FilledButton.styleFrom(
-        minimumSize: const Size(48, 50),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        textStyle: const TextStyle(fontWeight: FontWeight.w700),
-      ),
+      style:
+          FilledButton.styleFrom(
+            minimumSize: const Size(48, 50),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(15),
+            ),
+            textStyle: const TextStyle(fontWeight: FontWeight.w700),
+          ).copyWith(
+            animationDuration: const Duration(milliseconds: 140),
+            overlayColor: _interactiveOverlay(colorScheme.primary),
+          ),
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
-      style: ElevatedButton.styleFrom(
-        minimumSize: const Size(48, 50),
-        backgroundColor: electricBlue,
-        foregroundColor: Colors.white,
-        elevation: 2,
-        shadowColor: electricBlue.withValues(alpha: 0.24),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        textStyle: const TextStyle(fontWeight: FontWeight.w700),
-      ),
+      style:
+          ElevatedButton.styleFrom(
+            minimumSize: const Size(48, 50),
+            backgroundColor: electricBlue,
+            foregroundColor: Colors.white,
+            elevation: 2,
+            shadowColor: electricBlue.withValues(alpha: 0.24),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(15),
+            ),
+            textStyle: const TextStyle(fontWeight: FontWeight.w700),
+          ).copyWith(
+            animationDuration: const Duration(milliseconds: 140),
+            overlayColor: _interactiveOverlay(Colors.white),
+          ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
-      style: OutlinedButton.styleFrom(
-        minimumSize: const Size(44, 48),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        side: BorderSide(color: outline),
+      style:
+          OutlinedButton.styleFrom(
+            minimumSize: const Size(44, 48),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(15),
+            ),
+            side: BorderSide(color: outline),
+          ).copyWith(
+            animationDuration: const Duration(milliseconds: 140),
+            overlayColor: _interactiveOverlay(colorScheme.primary),
+          ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom().copyWith(
+        animationDuration: const Duration(milliseconds: 140),
+        overlayColor: _interactiveOverlay(colorScheme.primary),
+      ),
+    ),
+    iconButtonTheme: IconButtonThemeData(
+      style: ButtonStyle(
+        animationDuration: const Duration(milliseconds: 140),
+        overlayColor: _interactiveOverlay(colorScheme.primary),
       ),
     ),
     chipTheme: ChipThemeData(
@@ -255,6 +285,82 @@ ThemeData buildAppTheme(Brightness brightness) {
       contentTextStyle: TextStyle(color: colorScheme.onInverseSurface),
     ),
   );
+}
+
+WidgetStateProperty<Color?> _interactiveOverlay(Color color) =>
+    WidgetStateProperty.resolveWith((states) {
+      if (states.contains(WidgetState.pressed)) {
+        return color.withValues(alpha: 0.16);
+      }
+      if (states.contains(WidgetState.hovered)) {
+        return color.withValues(alpha: 0.08);
+      }
+      if (states.contains(WidgetState.focused)) {
+        return color.withValues(alpha: 0.12);
+      }
+      return null;
+    });
+
+class InteractiveFeedback extends StatefulWidget {
+  final Widget child;
+  final bool enabled;
+
+  const InteractiveFeedback({
+    super.key,
+    required this.child,
+    this.enabled = true,
+  });
+
+  @override
+  State<InteractiveFeedback> createState() => _InteractiveFeedbackState();
+}
+
+class _InteractiveFeedbackState extends State<InteractiveFeedback> {
+  bool _isPressed = false;
+  bool _isHovered = false;
+  int? _activePointer;
+
+  void _handlePointerDown(PointerDownEvent event) {
+    if (!widget.enabled || event.buttons == 0) return;
+    _activePointer = event.pointer;
+    setState(() => _isPressed = true);
+  }
+
+  void _handlePointerEnd(PointerEvent event) {
+    if (_activePointer != event.pointer) return;
+    _activePointer = null;
+    if (mounted) setState(() => _isPressed = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final duration = MediaQuery.of(context).disableAnimations
+        ? Duration.zero
+        : const Duration(milliseconds: 130);
+    final scale = !widget.enabled
+        ? 1.0
+        : _isPressed
+        ? 0.97
+        : _isHovered
+        ? 1.015
+        : 1.0;
+
+    return MouseRegion(
+      onEnter: widget.enabled ? (_) => setState(() => _isHovered = true) : null,
+      onExit: widget.enabled ? (_) => setState(() => _isHovered = false) : null,
+      child: Listener(
+        onPointerDown: _handlePointerDown,
+        onPointerUp: _handlePointerEnd,
+        onPointerCancel: _handlePointerEnd,
+        child: AnimatedScale(
+          scale: scale,
+          duration: duration,
+          curve: Curves.easeOutCubic,
+          child: widget.child,
+        ),
+      ),
+    );
+  }
 }
 
 class AnimatedTechBackground extends StatefulWidget {
@@ -471,29 +577,32 @@ class GradientActionButton extends StatelessWidget {
         child: Material(
           color: Colors.transparent,
           borderRadius: BorderRadius.circular(16),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(16),
-            onTap: enabled ? onPressed : null,
-            child: SizedBox(
-              height: 54,
-              child: Center(
-                child: isLoading
-                    ? const SizedBox(
-                        width: 21,
-                        height: 21,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.2,
-                          color: Colors.white,
+          child: InteractiveFeedback(
+            enabled: enabled,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: enabled ? onPressed : null,
+              child: SizedBox(
+                height: 54,
+                child: Center(
+                  child: isLoading
+                      ? const SizedBox(
+                          width: 21,
+                          height: 21,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : DefaultTextStyle.merge(
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          child: child,
                         ),
-                      )
-                    : DefaultTextStyle.merge(
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                        ),
-                        child: child,
-                      ),
+                ),
               ),
             ),
           ),
@@ -2259,23 +2368,25 @@ class _HomePageState extends State<HomePage> {
 
             const SizedBox(height: 25),
 
-            TextField(
-              readOnly: true,
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => SearchPage(
-                      bookmarks: bookmarks,
-                      historyStore: _historyStore,
-                      onBookmarkChanged: () {
-                        setState(() {});
-                      },
+            InteractiveFeedback(
+              child: TextField(
+                readOnly: true,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => SearchPage(
+                        bookmarks: bookmarks,
+                        historyStore: _historyStore,
+                        onBookmarkChanged: () {
+                          setState(() {});
+                        },
+                      ),
                     ),
-                  ),
-                );
-              },
-              decoration: inputDecoration('Cari materi...', Icons.search),
+                  );
+                },
+                decoration: inputDecoration('Cari materi...', Icons.search),
+              ),
             ),
 
             const SizedBox(height: 25),
@@ -2360,80 +2471,83 @@ class _HomePageState extends State<HomePage> {
               itemBuilder: (_, index) {
                 final category = categoryData[index];
 
-                return InkWell(
-                  borderRadius: BorderRadius.circular(18),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => CategoryPage(
-                          category: category['name'] as String,
-                          bookmarks: bookmarks,
-                          historyStore: _historyStore,
-                          onBookmarkChanged: () {
-                            setState(() {});
-                          },
+                return InteractiveFeedback(
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(18),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => CategoryPage(
+                            category: category['name'] as String,
+                            bookmarks: bookmarks,
+                            historyStore: _historyStore,
+                            onBookmarkChanged: () {
+                              setState(() {});
+                            },
+                          ),
                         ),
-                      ),
-                    );
-                  },
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          Theme.of(context).colorScheme.surface,
-                          (category['accent'] as Color).withValues(
-                            alpha:
-                                Theme.of(context).brightness == Brightness.dark
-                                ? 0.16
-                                : 0.07,
+                      );
+                    },
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Theme.of(context).colorScheme.surface,
+                            (category['accent'] as Color).withValues(
+                              alpha:
+                                  Theme.of(context).brightness ==
+                                      Brightness.dark
+                                  ? 0.16
+                                  : 0.07,
+                            ),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(19),
+                        border: Border.all(
+                          color: (category['accent'] as Color).withValues(
+                            alpha: 0.22,
+                          ),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: (category['accent'] as Color).withValues(
+                              alpha: 0.08,
+                            ),
+                            blurRadius: 16,
+                            offset: const Offset(0, 7),
                           ),
                         ],
                       ),
-                      borderRadius: BorderRadius.circular(19),
-                      border: Border.all(
-                        color: (category['accent'] as Color).withValues(
-                          alpha: 0.22,
-                        ),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: (category['accent'] as Color).withValues(
-                            alpha: 0.08,
-                          ),
-                          blurRadius: 16,
-                          offset: const Offset(0, 7),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Container(
-                          width: 54,
-                          height: 54,
-                          decoration: BoxDecoration(
-                            color: (category['accent'] as Color).withValues(
-                              alpha: 0.13,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            width: 54,
+                            height: 54,
+                            decoration: BoxDecoration(
+                              color: (category['accent'] as Color).withValues(
+                                alpha: 0.13,
+                              ),
+                              borderRadius: BorderRadius.circular(17),
                             ),
-                            borderRadius: BorderRadius.circular(17),
+                            child: Icon(
+                              category['icon'] as IconData,
+                              size: 29,
+                              color: category['accent'] as Color,
+                            ),
                           ),
-                          child: Icon(
-                            category['icon'] as IconData,
-                            size: 29,
-                            color: category['accent'] as Color,
+                          const SizedBox(height: 9),
+                          Text(
+                            category['name'] as String,
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.labelLarge
+                                ?.copyWith(fontWeight: FontWeight.w700),
                           ),
-                        ),
-                        const SizedBox(height: 9),
-                        Text(
-                          category['name'] as String,
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.labelLarge
-                              ?.copyWith(fontWeight: FontWeight.w700),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 );
@@ -2450,36 +2564,38 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(height: 12),
 
             ...materials.take(3).map((material) {
-              return Card(
-                margin: const EdgeInsets.only(bottom: 10),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: Theme.of(context)
-                        .colorScheme
-                        .primaryContainer,
-                    child: Icon(
-                      material.icon,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
-                  title: Text(material.title),
-                  subtitle: Text(material.category),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => MaterialDetailPage(
-                          material: material,
-                          bookmarks: bookmarks,
-                          historyStore: _historyStore,
-                          onBookmarkChanged: () {
-                            setState(() {});
-                          },
-                        ),
+              return InteractiveFeedback(
+                child: Card(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: Theme.of(context)
+                          .colorScheme
+                          .primaryContainer,
+                      child: Icon(
+                        material.icon,
+                        color: Theme.of(context).colorScheme.primary,
                       ),
-                    );
-                  },
+                    ),
+                    title: Text(material.title),
+                    subtitle: Text(material.category),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => MaterialDetailPage(
+                            material: material,
+                            bookmarks: bookmarks,
+                            historyStore: _historyStore,
+                            onBookmarkChanged: () {
+                              setState(() {});
+                            },
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 ),
               );
             }),
@@ -2535,31 +2651,33 @@ class _HomePageState extends State<HomePage> {
                     else
                       ...recentEntries.map((entry) {
                         final material = findMaterialById(entry.materialId);
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          child: ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: Theme.of(context)
-                                  .colorScheme
-                                  .primaryContainer,
-                              child: Icon(
-                                material?.icon ?? Icons.menu_book,
-                                color: Theme.of(context).colorScheme.primary,
+                        return InteractiveFeedback(
+                          child: Card(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            child: ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: Theme.of(context)
+                                    .colorScheme
+                                    .primaryContainer,
+                                child: Icon(
+                                  material?.icon ?? Icons.menu_book,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
                               ),
-                            ),
-                            title: Text(entry.title),
-                            subtitle: Text(
-                              '${entry.category} · ${formatHistoryTime(entry.lastOpened)}',
-                            ),
-                            trailing: const Icon(Icons.chevron_right),
-                            onTap: () => openHistoryEntry(
-                              context,
-                              entry,
-                              historyStore: _historyStore,
-                              bookmarks: bookmarks,
-                              onBookmarkChanged: () {
-                                setState(() {});
-                              },
+                              title: Text(entry.title),
+                              subtitle: Text(
+                                '${entry.category} · ${formatHistoryTime(entry.lastOpened)}',
+                              ),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () => openHistoryEntry(
+                                context,
+                                entry,
+                                historyStore: _historyStore,
+                                bookmarks: bookmarks,
+                                onBookmarkChanged: () {
+                                  setState(() {});
+                                },
+                              ),
                             ),
                           ),
                         );
@@ -2686,59 +2804,63 @@ class _LearnPageState extends State<LearnPage> {
 
                       final saved = widget.bookmarks.contains(material.title);
 
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.all(12),
-                          leading: CircleAvatar(
-                            radius: 28,
-                            backgroundColor: Theme.of(context)
-                                .colorScheme
-                                .primaryContainer,
-                            child: Icon(
-                              material.icon,
-                              color: Theme.of(context).colorScheme.primary,
+                      return InteractiveFeedback(
+                        child: Card(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.all(12),
+                            leading: CircleAvatar(
+                              radius: 28,
+                              backgroundColor: Theme.of(context)
+                                  .colorScheme
+                                  .primaryContainer,
+                              child: Icon(
+                                material.icon,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
                             ),
-                          ),
-                          title: Text(
-                            material.title,
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          subtitle: Text(material.category),
-                          trailing: IconButton(
-                            icon: Icon(
-                              saved ? Icons.bookmark : Icons.bookmark_border,
-                              color: saved
-                                  ? Theme.of(context).colorScheme.primary
-                                  : Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant,
+                            title: Text(
+                              material.title,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
-                            onPressed: () {
-                              if (saved) {
-                                widget.bookmarks.remove(material.title);
-                              } else {
-                                widget.bookmarks.add(material.title);
-                              }
+                            subtitle: Text(material.category),
+                            trailing: IconButton(
+                              icon: Icon(
+                                saved ? Icons.bookmark : Icons.bookmark_border,
+                                color: saved
+                                    ? Theme.of(context).colorScheme.primary
+                                    : Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant,
+                              ),
+                              onPressed: () {
+                                if (saved) {
+                                  widget.bookmarks.remove(material.title);
+                                } else {
+                                  widget.bookmarks.add(material.title);
+                                }
 
-                              widget.onBookmarkChanged();
+                                widget.onBookmarkChanged();
 
-                              setState(() {});
+                                setState(() {});
+                              },
+                            ),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => MaterialDetailPage(
+                                    material: material,
+                                    bookmarks: widget.bookmarks,
+                                    historyStore: widget.historyStore,
+                                    onBookmarkChanged: widget.onBookmarkChanged,
+                                  ),
+                                ),
+                              );
                             },
                           ),
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => MaterialDetailPage(
-                                  material: material,
-                                  bookmarks: widget.bookmarks,
-                                  historyStore: widget.historyStore,
-                                  onBookmarkChanged: widget.onBookmarkChanged,
-                                ),
-                              ),
-                            );
-                          },
                         ),
                       );
                     },
@@ -2805,26 +2927,28 @@ class _SearchPageState extends State<SearchPage> {
               itemBuilder: (_, index) {
                 final material = result[index];
 
-                return ListTile(
-                  leading: Icon(
-                    material.icon,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                  title: Text(material.title),
-                  subtitle: Text(material.category),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => MaterialDetailPage(
-                          material: material,
-                          bookmarks: widget.bookmarks,
-                          historyStore: widget.historyStore,
-                          onBookmarkChanged: widget.onBookmarkChanged,
+                return InteractiveFeedback(
+                  child: ListTile(
+                    leading: Icon(
+                      material.icon,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    title: Text(material.title),
+                    subtitle: Text(material.category),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => MaterialDetailPage(
+                            material: material,
+                            bookmarks: widget.bookmarks,
+                            historyStore: widget.historyStore,
+                            onBookmarkChanged: widget.onBookmarkChanged,
+                          ),
                         ),
-                      ),
-                    );
-                  },
+                      );
+                    },
+                  ),
                 );
               },
             ),
@@ -2869,36 +2993,38 @@ class CategoryPage extends StatelessWidget {
               itemBuilder: (_, index) {
                 final material = filtered[index];
 
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: Theme.of(context)
-                          .colorScheme
-                          .primaryContainer,
-                      child: Icon(
-                        material.icon,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                    ),
-                    title: Text(
-                      material.title,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    subtitle: Text(material.description),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => MaterialDetailPage(
-                            material: material,
-                            bookmarks: bookmarks,
-                            historyStore: historyStore,
-                            onBookmarkChanged: onBookmarkChanged,
-                          ),
+                return InteractiveFeedback(
+                  child: Card(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: Theme.of(context)
+                            .colorScheme
+                            .primaryContainer,
+                        child: Icon(
+                          material.icon,
+                          color: Theme.of(context).colorScheme.primary,
                         ),
-                      );
-                    },
+                      ),
+                      title: Text(
+                        material.title,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: Text(material.description),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => MaterialDetailPage(
+                              material: material,
+                              bookmarks: bookmarks,
+                              historyStore: historyStore,
+                              onBookmarkChanged: onBookmarkChanged,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
                   ),
                 );
               },
@@ -3253,33 +3379,35 @@ class MaterialHistoryPage extends StatelessWidget {
             itemBuilder: (context, index) {
               final entry = entries[index];
               final material = findMaterialById(entry.materialId);
-              return Card(
-                margin: const EdgeInsets.only(bottom: 10),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: Theme.of(context)
-                        .colorScheme
-                        .primaryContainer,
-                    child: Icon(
-                      material?.icon ?? Icons.menu_book,
-                      color: Theme.of(context).colorScheme.primary,
+              return InteractiveFeedback(
+                child: Card(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: Theme.of(context)
+                          .colorScheme
+                          .primaryContainer,
+                      child: Icon(
+                        material?.icon ?? Icons.menu_book,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
                     ),
-                  ),
-                  title: Text(entry.title),
-                  subtitle: Text(
-                    '${entry.category} · ${formatHistoryTime(entry.lastOpened)}',
-                  ),
-                  trailing: IconButton(
-                    tooltip: 'Hapus dari riwayat',
-                    icon: const Icon(Icons.close),
-                    onPressed: () => historyStore.remove(entry.materialId),
-                  ),
-                  onTap: () => openHistoryEntry(
-                    context,
-                    entry,
-                    historyStore: historyStore,
-                    bookmarks: bookmarks,
-                    onBookmarkChanged: onBookmarkChanged,
+                    title: Text(entry.title),
+                    subtitle: Text(
+                      '${entry.category} · ${formatHistoryTime(entry.lastOpened)}',
+                    ),
+                    trailing: IconButton(
+                      tooltip: 'Hapus dari riwayat',
+                      icon: const Icon(Icons.close),
+                      onPressed: () => historyStore.remove(entry.materialId),
+                    ),
+                    onTap: () => openHistoryEntry(
+                      context,
+                      entry,
+                      historyStore: historyStore,
+                      bookmarks: bookmarks,
+                      onBookmarkChanged: onBookmarkChanged,
+                    ),
                   ),
                 ),
               );
@@ -3359,38 +3487,40 @@ class BookmarkPage extends StatelessWidget {
                     itemBuilder: (_, index) {
                       final material = savedMaterials[index];
 
-                      return Card(
-                        child: ListTile(
-                          leading: Icon(
-                            material.icon,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                          title: Text(material.title),
-                          subtitle: Text(material.category),
-                          trailing: IconButton(
-                            icon: Icon(
-                              Icons.bookmark,
+                      return InteractiveFeedback(
+                        child: Card(
+                          child: ListTile(
+                            leading: Icon(
+                              material.icon,
                               color: Theme.of(context).colorScheme.primary,
                             ),
-                            onPressed: () {
-                              bookmarks.remove(material.title);
+                            title: Text(material.title),
+                            subtitle: Text(material.category),
+                            trailing: IconButton(
+                              icon: Icon(
+                                Icons.bookmark,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                              onPressed: () {
+                                bookmarks.remove(material.title);
 
-                              onBookmarkChanged();
+                                onBookmarkChanged();
+                              },
+                            ),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => MaterialDetailPage(
+                                    material: material,
+                                    bookmarks: bookmarks,
+                                    historyStore: historyStore,
+                                    onBookmarkChanged: onBookmarkChanged,
+                                  ),
+                                ),
+                              );
                             },
                           ),
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => MaterialDetailPage(
-                                  material: material,
-                                  bookmarks: bookmarks,
-                                  historyStore: historyStore,
-                                  onBookmarkChanged: onBookmarkChanged,
-                                ),
-                              ),
-                            );
-                          },
                         ),
                       );
                     },
@@ -3954,83 +4084,89 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
                           Icons.local_fire_department_outlined,
                       };
 
-                      return SizedBox(
-                        width: cardWidth,
-                        child: Material(
-                          color: isSelected
-                              ? selectedColor
-                              : colorScheme.surface,
-                          borderRadius: BorderRadius.circular(14),
-                          child: InkWell(
-                            key: ValueKey('difficulty-${difficulty.name}'),
+                      return InteractiveFeedback(
+                        child: SizedBox(
+                          width: cardWidth,
+                          child: Material(
+                            color: isSelected
+                                ? selectedColor
+                                : colorScheme.surface,
                             borderRadius: BorderRadius.circular(14),
-                            onTap: () => setState(
-                              () => _selectedDifficulty = difficulty,
-                            ),
-                            child: Container(
-                              constraints: const BoxConstraints(minHeight: 142),
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(
-                                  color: isSelected
-                                      ? accentColor
-                                      : colorScheme.outlineVariant,
-                                  width: isSelected ? 2 : 1,
-                                ),
+                            child: InkWell(
+                              key: ValueKey('difficulty-${difficulty.name}'),
+                              borderRadius: BorderRadius.circular(14),
+                              onTap: () => setState(
+                                () => _selectedDifficulty = difficulty,
                               ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Icon(icon, color: accentColor),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          difficulty.label,
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .titleMedium
-                                              ?.copyWith(
-                                                color: isSelected
-                                                    ? selectedForeground
-                                                    : colorScheme.onSurface,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                        ),
-                                      ),
-                                      if (isSelected)
-                                        Icon(
-                                          Icons.check_circle,
-                                          color: accentColor,
-                                        ),
-                                    ],
+                              child: Container(
+                                constraints: const BoxConstraints(
+                                  minHeight: 142,
+                                ),
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: isSelected
+                                        ? accentColor
+                                        : colorScheme.outlineVariant,
+                                    width: isSelected ? 2 : 1,
                                   ),
-                                  const SizedBox(height: 10),
-                                  Text(
-                                    difficulty.description,
-                                    style: Theme.of(context).textTheme.bodySmall
-                                        ?.copyWith(
-                                          color: isSelected
-                                              ? selectedForeground
-                                              : colorScheme.onSurfaceVariant,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Icon(icon, color: accentColor),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            difficulty.label,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .titleMedium
+                                                ?.copyWith(
+                                                  color: isSelected
+                                                      ? selectedForeground
+                                                      : colorScheme.onSurface,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                          ),
                                         ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    questions.isEmpty
-                                        ? 'Tidak tersedia'
-                                        : '${questions.length} soal',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .labelLarge
-                                        ?.copyWith(
-                                          color: accentColor,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                  ),
-                                ],
+                                        if (isSelected)
+                                          Icon(
+                                            Icons.check_circle,
+                                            color: accentColor,
+                                          ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Text(
+                                      difficulty.description,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                            color: isSelected
+                                                ? selectedForeground
+                                                : colorScheme.onSurfaceVariant,
+                                          ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      questions.isEmpty
+                                          ? 'Tidak tersedia'
+                                          : '${questions.length} soal',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .labelLarge
+                                          ?.copyWith(
+                                            color: accentColor,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
@@ -4110,50 +4246,53 @@ class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
               selected: isCurrent,
               label:
                   'Soal ${index + 1}${isAnswered ? ', sudah dijawab' : ', belum dijawab'}${isCurrent ? ', saat ini' : ''}',
-              child: Material(
-                color: backgroundColor,
-                borderRadius: BorderRadius.circular(10),
-                child: InkWell(
-                  key: ValueKey('question-number-$index'),
+              child: InteractiveFeedback(
+                enabled: !_isFinishing,
+                child: Material(
+                  color: backgroundColor,
                   borderRadius: BorderRadius.circular(10),
-                  onTap: _isFinishing ? null : () => goToQuestion(index),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: isCurrent
-                            ? colorScheme.primary
-                            : isAnswered
-                            ? colorScheme.secondary
-                            : colorScheme.outlineVariant,
-                        width: isCurrent ? 2 : 1,
-                      ),
-                    ),
-                    alignment: Alignment.center,
-                    child: Stack(
-                      children: [
-                        Center(
-                          child: Text(
-                            '${index + 1}',
-                            style: TextStyle(
-                              color: foregroundColor,
-                              fontWeight: isCurrent || isAnswered
-                                  ? FontWeight.bold
-                                  : FontWeight.normal,
-                            ),
-                          ),
+                  child: InkWell(
+                    key: ValueKey('question-number-$index'),
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: _isFinishing ? null : () => goToQuestion(index),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: isCurrent
+                              ? colorScheme.primary
+                              : isAnswered
+                              ? colorScheme.secondary
+                              : colorScheme.outlineVariant,
+                          width: isCurrent ? 2 : 1,
                         ),
-                        if (isAnswered)
-                          Positioned(
-                            right: 2,
-                            bottom: 1,
-                            child: Icon(
-                              Icons.check,
-                              size: 12,
-                              color: foregroundColor,
+                      ),
+                      alignment: Alignment.center,
+                      child: Stack(
+                        children: [
+                          Center(
+                            child: Text(
+                              '${index + 1}',
+                              style: TextStyle(
+                                color: foregroundColor,
+                                fontWeight: isCurrent || isAnswered
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                              ),
                             ),
                           ),
-                      ],
+                          if (isAnswered)
+                            Positioned(
+                              right: 2,
+                              bottom: 1,
+                              child: Icon(
+                                Icons.check,
+                                size: 12,
+                                color: foregroundColor,
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
                 ),

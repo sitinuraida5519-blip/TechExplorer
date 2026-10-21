@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -51,6 +52,47 @@ Future<void> fillQuizQuestionForm(
 }
 
 void main() {
+  testWidgets('interactive feedback scales on press and desktop hover', (
+    WidgetTester tester,
+  ) async {
+    var tapCount = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Center(
+          child: InteractiveFeedback(
+            child: TextButton(
+              onPressed: () => tapCount++,
+              child: const Text('Action'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final action = find.text('Action');
+    final gesture = await tester.startGesture(tester.getCenter(action));
+    await tester.pump();
+    expect(
+      tester.widget<AnimatedScale>(find.byType(AnimatedScale)).scale,
+      0.97,
+    );
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(tapCount, 1);
+    expect(tester.widget<AnimatedScale>(find.byType(AnimatedScale)).scale, 1);
+
+    final center = tester.getCenter(action);
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    await mouse.moveTo(center);
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<AnimatedScale>(find.byType(AnimatedScale)).scale,
+      1.015,
+    );
+    await mouse.removePointer();
+  });
+
   testWidgets('difficulty selection filters real questions and starts timer', (
     WidgetTester tester,
   ) async {
