@@ -15,19 +15,28 @@ Future<void> main() async {
     materials
       ..clear()
       ..addAll(storedMaterials);
-  }
-  final storedQuestions = await quizQuestionStore.load();
-  if (storedQuestions != null) {
-    for (final question in storedQuestions) {
-      final existingIndex = quizQuestions.indexWhere(
-        (item) => item.id == question.id,
+    final migrated = migrateMaterialCategories(materials);
+    if (migrated && !await materialCatalogStore.save(materials)) {
+      debugPrint(
+        'TechExplorer: failed to persist migrated material categories.',
       );
-      if (existingIndex == -1) {
-        quizQuestions.add(question);
-      } else {
-        quizQuestions[existingIndex] = question;
-      }
     }
+  }
+  final storedCategories = await categoryStore.load();
+  if (storedCategories != null) {
+    categoryData
+      ..clear()
+      ..addAll(storedCategories.map(categoryDetails));
+  } else if (!await categoryStore.save(categoryData)) {
+    debugPrint('TechExplorer: failed to persist default categories.');
+  }
+  final storedUsers = await userStore.load();
+  if (storedUsers != null) {
+    users
+      ..clear()
+      ..addAll(storedUsers);
+  } else if (!await userStore.save(users)) {
+    debugPrint('TechExplorer: failed to persist default account.');
   }
   runApp(const MyApp());
 }
@@ -870,6 +879,50 @@ class MaterialCatalogStore {
 
 final MaterialCatalogStore materialCatalogStore = MaterialCatalogStore();
 
+class UserStore {
+  static const String _storageKey = 'tech_explorer_accounts_v1';
+
+  Future<List<Map<String, String>>?> load() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final rawValue = preferences.getString(_storageKey);
+      if (rawValue == null) return null;
+      final decoded = jsonDecode(rawValue);
+      if (decoded is! List) return null;
+      final restored = <Map<String, String>>[];
+      for (final item in decoded) {
+        if (item is! Map ||
+            item['name'] is! String ||
+            item['email'] is! String ||
+            item['password'] is! String ||
+            item['class'] is! String) {
+          return null;
+        }
+        restored.add({
+          'name': item['name'] as String,
+          'email': item['email'] as String,
+          'password': item['password'] as String,
+          'class': item['class'] as String,
+        });
+      }
+      return restored;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<bool> save(List<Map<String, String>> accounts) async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      return preferences.setString(_storageKey, jsonEncode(accounts));
+    } catch (_) {
+      return false;
+    }
+  }
+}
+
+final UserStore userStore = UserStore();
+
 class MaterialHistoryEntry {
   final String materialId;
   final String title;
@@ -1003,244 +1056,17 @@ class MaterialHistoryStore extends ChangeNotifier {
 }
 
 // ============================================================
-// MODEL SOAL
-// ============================================================
+class AdminSession {
+  bool _isAuthenticated = false;
 
-enum QuizDifficulty { easy, medium, hard }
+  bool get isAuthenticated => _isAuthenticated;
 
-int _quizQuestionSequence = 0;
+  void authenticate() => _isAuthenticated = true;
 
-String newQuizQuestionId() =>
-    'admin-question-${DateTime.now().microsecondsSinceEpoch}-${_quizQuestionSequence++}';
-
-extension QuizDifficultyDetails on QuizDifficulty {
-  String get label => switch (this) {
-    QuizDifficulty.easy => 'Mudah',
-    QuizDifficulty.medium => 'Sedang',
-    QuizDifficulty.hard => 'Sulit',
-  };
-
-  String get description => switch (this) {
-    QuizDifficulty.easy => 'Konsep dasar dengan pertanyaan langsung.',
-    QuizDifficulty.medium => 'Penerapan konsep dan analisis sederhana.',
-    QuizDifficulty.hard => 'Skenario troubleshooting yang perlu dianalisis.',
-  };
+  void clear() => _isAuthenticated = false;
 }
 
-class QuizQuestion {
-  final String id;
-  String question;
-  List<String> options;
-  int correctAnswer;
-  QuizDifficulty difficulty;
-  String category;
-  String explanation;
-  bool isActive;
-  String type;
-
-  QuizQuestion({
-    String? id,
-    required this.question,
-    required this.options,
-    required this.correctAnswer,
-    this.difficulty = QuizDifficulty.easy,
-    this.category = 'Computer Basics',
-    this.explanation = '',
-    this.isActive = true,
-    this.type = 'multipleChoice',
-  }) : id = id ?? 'bank-question-${_quizQuestionSequence++}';
-
-  QuizQuestion copyWith({
-    String? question,
-    List<String>? options,
-    int? correctAnswer,
-    QuizDifficulty? difficulty,
-    String? category,
-    String? explanation,
-    bool? isActive,
-    String? type,
-  }) => QuizQuestion(
-    id: id,
-    question: question ?? this.question,
-    options: options ?? List<String>.of(this.options),
-    correctAnswer: correctAnswer ?? this.correctAnswer,
-    difficulty: difficulty ?? this.difficulty,
-    category: category ?? this.category,
-    explanation: explanation ?? this.explanation,
-    isActive: isActive ?? this.isActive,
-    type: type ?? this.type,
-  );
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'question': question,
-    'options': options,
-    'correctAnswer': correctAnswer,
-    'difficulty': difficulty.name,
-    'category': category,
-    'explanation': explanation,
-    'isActive': isActive,
-    'type': type,
-  };
-
-  static QuizQuestion? fromJson(dynamic value) {
-    if (value is! Map) return null;
-    final id = value['id'];
-    final question = value['question'];
-    final optionsValue = value['options'];
-    final correctAnswer = value['correctAnswer'];
-    final difficultyName = value['difficulty'];
-    final category = value['category'];
-    final explanation = value['explanation'];
-    final isActive = value['isActive'];
-    final type = value['type'];
-    if (id is! String ||
-        id.isEmpty ||
-        question is! String ||
-        question.trim().isEmpty ||
-        optionsValue is! List ||
-        !optionsValue.every((option) => option is String) ||
-        optionsValue.length != 4 ||
-        correctAnswer is! int ||
-        correctAnswer < 0 ||
-        correctAnswer >= optionsValue.length ||
-        difficultyName is! String ||
-        category is! String ||
-        category.isEmpty ||
-        explanation is! String ||
-        isActive is! bool ||
-        type != 'multipleChoice') {
-      return null;
-    }
-    final difficulty = QuizDifficulty.values
-        .where((item) => item.name == difficultyName)
-        .firstOrNull;
-    if (difficulty == null) return null;
-    return QuizQuestion(
-      id: id,
-      question: question,
-      options: optionsValue.cast<String>(),
-      correctAnswer: correctAnswer,
-      difficulty: difficulty,
-      category: category,
-      explanation: explanation,
-      isActive: isActive,
-      type: type as String,
-    );
-  }
-}
-
-List<QuizQuestion> questionsForDifficulty(
-  Iterable<QuizQuestion> questionBank,
-  QuizDifficulty difficulty,
-) => questionBank
-    .where((question) => question.isActive && question.difficulty == difficulty)
-    .toList();
-
-enum QuizQuestionSaveResult { saved, duplicateId, failed }
-
-enum QuizQuestionMutationResult { saved, notFound, failed }
-
-class QuizQuestionStore {
-  static const String _storageKey = 'tech_explorer_admin_quiz_questions_v1';
-
-  Future<List<QuizQuestion>?> load() async {
-    try {
-      final preferences = await SharedPreferences.getInstance();
-      final rawValue = preferences.getString(_storageKey);
-      if (rawValue == null) return [];
-      final decoded = jsonDecode(rawValue);
-      if (decoded is! List) return null;
-
-      final restored = <QuizQuestion>[];
-      final ids = <String>{};
-      for (final value in decoded) {
-        final question = QuizQuestion.fromJson(value);
-        if (question == null || !ids.add(question.id)) return null;
-        restored.add(question);
-      }
-      return restored;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Future<QuizQuestionSaveResult> add(
-    QuizQuestion question, {
-    required Iterable<QuizQuestion> existingQuestions,
-  }) async {
-    if (existingQuestions.any((item) => item.id == question.id)) {
-      return QuizQuestionSaveResult.duplicateId;
-    }
-    try {
-      final preferences = await SharedPreferences.getInstance();
-      final storedQuestions = await load();
-      if (storedQuestions == null) return QuizQuestionSaveResult.failed;
-      if (storedQuestions.any((item) => item.id == question.id)) {
-        return QuizQuestionSaveResult.duplicateId;
-      }
-      final saved = await preferences.setString(
-        _storageKey,
-        jsonEncode([
-          ...storedQuestions.map((item) => item.toJson()),
-          question.toJson(),
-        ]),
-      );
-      return saved
-          ? QuizQuestionSaveResult.saved
-          : QuizQuestionSaveResult.failed;
-    } catch (_) {
-      return QuizQuestionSaveResult.failed;
-    }
-  }
-
-  Future<QuizQuestionMutationResult> update(
-    QuizQuestion question, {
-    required Iterable<QuizQuestion> existingQuestions,
-  }) async {
-    if (!existingQuestions.any((item) => item.id == question.id)) {
-      return QuizQuestionMutationResult.notFound;
-    }
-    try {
-      final preferences = await SharedPreferences.getInstance();
-      final storedQuestions = await load();
-      if (storedQuestions == null) return QuizQuestionMutationResult.failed;
-      final storedIndex = storedQuestions.indexWhere(
-        (item) => item.id == question.id,
-      );
-      if (storedIndex == -1) {
-        storedQuestions.add(question);
-      } else {
-        storedQuestions[storedIndex] = question;
-      }
-      final saved = await preferences.setString(
-        _storageKey,
-        jsonEncode(storedQuestions.map((item) => item.toJson()).toList()),
-      );
-      return saved
-          ? QuizQuestionMutationResult.saved
-          : QuizQuestionMutationResult.failed;
-    } catch (_) {
-      return QuizQuestionMutationResult.failed;
-    }
-  }
-
-  Future<QuizQuestionMutationResult> deactivate(
-    String id, {
-    required Iterable<QuizQuestion> existingQuestions,
-  }) async {
-    final question = existingQuestions
-        .where((item) => item.id == id)
-        .firstOrNull;
-    if (question == null) return QuizQuestionMutationResult.notFound;
-    return update(
-      question.copyWith(isActive: false),
-      existingQuestions: existingQuestions,
-    );
-  }
-}
-
-final QuizQuestionStore quizQuestionStore = QuizQuestionStore();
+final AdminSession adminSession = AdminSession();
 
 // ============================================================
 // DATA MATERI TECH EXPLORER
@@ -1250,7 +1076,7 @@ List<MaterialData> materials = [
   MaterialData(
     id: 'computer-basics-introduction',
     title: 'Pengertian Komputer',
-    category: 'Computer Basics',
+    category: 'Pengenalan Komputer',
     description: 'Komputer adalah mesin elektronik yang menerima data, mengolahnya, dan menghasilkan informasi yang berguna bagi manusia.',
     content:
         'Komputer adalah perangkat elektronik yang digunakan untuk menerima data, mengolahnya, menyimpannya, dan menghasilkan informasi. Proses kerja komputer secara umum terdiri dari input, process, output, dan storage.\n\n'
@@ -1268,7 +1094,7 @@ List<MaterialData> materials = [
   MaterialData(
     id: 'computer-basics-system',
     title: 'Sistem Komputer',
-    category: 'Computer Basics',
+    category: 'Pengenalan Komputer',
     description: 'Sistem komputer terdiri dari perangkat keras, perangkat lunak, dan pengguna yang saling bekerja sama.',
     content:
         'Sistem komputer merupakan gabungan dari perangkat keras (hardware), perangkat lunak (software), dan pengguna (brainware) yang bekerja bersama untuk menjalankan proses komputasi. Hardware adalah komponen fisik seperti monitor, keyboard, mouse, CPU, dan printer. Software adalah program yang mengendalikan kerja komputer, seperti sistem operasi, Microsoft Word, dan browser. Brainware adalah manusia yang menggunakan komputer untuk menjalankan tugas tertentu.\n\n'
@@ -1285,7 +1111,7 @@ List<MaterialData> materials = [
   MaterialData(
     id: 'hardware-motherboard',
     title: 'Motherboard',
-    category: 'Hardware',
+    category: 'Hardware (Perangkat Keras)',
     description: 'Motherboard adalah papan utama yang menjadi pusat hubungan semua komponen komputer.',
     content:
         'Motherboard atau papan induk adalah komponen utama pada komputer yang menjadi tempat pemasangan processor, RAM, kartu grafis, kartu jaringan, media penyimpanan, dan perangkat lain. Motherboard berfungsi sebagai pusat penghubung dan koordinasi kerja semua komponen agar komputer dapat berjalan dengan baik.\n\n'
@@ -1303,7 +1129,7 @@ List<MaterialData> materials = [
   MaterialData(
     id: 'hardware-processor',
     title: 'Processor',
-    category: 'Hardware',
+    category: 'Hardware (Perangkat Keras)',
     description: 'Processor adalah otak komputer yang menjalankan instruksi dan mengolah data.',
     content:
         'Processor atau CPU (Central Processing Unit) adalah komponen yang bertanggung jawab untuk menjalankan instruksi dan mengolah data. Processor membaca program, memproses perintah, dan menghasilkan hasil yang dibutuhkan pengguna. Dalam setiap komputer, processor menjadi pusat operasi utama.\n\n'
@@ -1321,7 +1147,7 @@ List<MaterialData> materials = [
   MaterialData(
     id: 'hardware-ram',
     title: 'RAM',
-    category: 'Hardware',
+    category: 'Hardware (Perangkat Keras)',
     description: 'RAM adalah memori sementara yang dipakai saat komputer aktif untuk menjalankan program dan data yang sedang dibuka.',
     content:
         'RAM atau Random Access Memory adalah memori yang digunakan untuk menyimpan data dan instruksi sementara ketika komputer sedang aktif. Data di RAM dapat diakses dengan cepat oleh processor saat program sedang berjalan. RAM berfungsi sebagai ruang kerja sementara bagi komputer.\n\n'
@@ -1339,7 +1165,7 @@ List<MaterialData> materials = [
   MaterialData(
     id: 'hardware-storage-hdd-ssd',
     title: 'Hard Disk dan SSD',
-    category: 'Hardware',
+    category: 'Hardware (Perangkat Keras)',
     description: 'Hard disk dan SSD adalah media penyimpanan utama yang digunakan untuk menyimpan data, aplikasi, dan sistem operasi.',
     content:
         'Hard Disk Drive (HDD) dan Solid State Drive (SSD) adalah perangkat penyimpanan data yang berfungsi menyimpan sistem operasi, aplikasi, file, foto, video, dan dokumen. HDD menggunakan piringan magnetik, sedangkan SSD menggunakan chip flash memory. Kedua perangkat ini memiliki fungsi yang sama, yaitu menyimpan data dalam jangka waktu lama.\n\n'
@@ -1357,7 +1183,7 @@ List<MaterialData> materials = [
   MaterialData(
     id: 'software-operating-system',
     title: 'Sistem Operasi',
-    category: 'Software',
+    category: 'Sistem Operasi',
     description: 'Sistem operasi adalah perangkat lunak yang mengelola sumber daya komputer dan menjadi penghubung antara pengguna dan hardware.',
     content:
         'Sistem operasi (Operating System) adalah perangkat lunak yang mengelola sumber daya komputer dan bekerja sebagai penghubung antara pengguna, aplikasi, dan perangkat keras. Fungsi utamanya adalah mengatur penggunaan CPU, RAM, penyimpanan, perangkat input-output, serta menjalankan program.\n\n'
@@ -1375,7 +1201,7 @@ List<MaterialData> materials = [
   MaterialData(
     id: 'software-driver',
     title: 'Driver',
-    category: 'Software',
+    category: 'Software (Perangkat Lunak)',
     description: 'Driver adalah perangkat lunak yang memungkinkan sistem operasi berkomunikasi dengan perangkat keras tertentu.',
     content:
         'Driver adalah program khusus yang memungkinkan sistem operasi mengenali dan mengendalikan perangkat keras tertentu. Tanpa driver, perangkat seperti printer, kartu grafis, Wi-Fi, dan scanner tidak dapat berfungsi dengan baik. Driver berperan sebagai penerjemah antara hardware dan software.\n\n'
@@ -1393,7 +1219,7 @@ List<MaterialData> materials = [
   MaterialData(
     id: 'networking-fundamentals',
     title: 'Jaringan Komputer',
-    category: 'Networking',
+    category: 'Dasar Jaringan Komputer',
     description: 'Jaringan komputer adalah hubungan antara beberapa perangkat yang memungkinkan komunikasi dan berbagi sumber daya.',
     content:
         'Jaringan komputer adalah kumpulan perangkat yang saling terhubung agar dapat bertukar data dan berbagi sumber daya. Perangkat yang terhubung bisa berupa komputer, laptop, printer, server, dan smartphone. Jaringan dapat dibuat dengan kabel maupun tanpa kabel.\n\n'
@@ -1411,7 +1237,7 @@ List<MaterialData> materials = [
   MaterialData(
     id: 'networking-lan-man-wan',
     title: 'LAN, MAN, dan WAN',
-    category: 'Networking',
+    category: 'Dasar Jaringan Komputer',
     description: 'Jenis jaringan dibedakan berdasarkan jangkauan wilayahnya: LAN, MAN, dan WAN.',
     content:
         'LAN (Local Area Network) adalah jaringan yang mencakup wilayah kecil seperti rumah, kantor, atau laboratorium komputer. Jaringan ini biasanya menghubungkan beberapa komputer yang berdekatan.\n\n'
@@ -1429,7 +1255,7 @@ List<MaterialData> materials = [
   MaterialData(
     id: 'networking-ip-address',
     title: 'IP Address',
-    category: 'Networking',
+    category: 'Istilah-Istilah Komputer',
     description: 'IP Address adalah alamat unik yang digunakan untuk mengidentifikasi perangkat dalam jaringan.',
     content:
         'IP Address atau alamat IP adalah identitas numerik yang diberikan kepada perangkat agar dapat dikenal dalam jaringan. Setiap komputer, smartphone, router, atau server mempunyai IP untuk memastikan data dikirim ke perangkat yang benar.\n\n'
@@ -1447,7 +1273,7 @@ List<MaterialData> materials = [
   MaterialData(
     id: 'networking-topologies',
     title: 'Topologi Jaringan',
-    category: 'Networking',
+    category: 'Dasar Jaringan Komputer',
     description: 'Topologi jaringan menggambarkan bentuk hubungan antarperangkat dalam suatu jaringan.',
     content:
         'Topologi jaringan adalah pola atau bentuk hubungan antarperangkat dalam sebuah jaringan komputer. Topologi menjelaskan bagaimana komputer, switch, router, dan perangkat lain terhubung satu sama lain.\n\n'
@@ -1465,7 +1291,7 @@ List<MaterialData> materials = [
   MaterialData(
     id: 'network-device-router',
     title: 'Router',
-    category: 'Network Devices',
+    category: 'Perangkat Jaringan',
     description: 'Router adalah perangkat yang menghubungkan jaringan yang berbeda dan meneruskan data ke tujuan yang tepat.',
     content:
         'Router adalah perangkat jaringan yang berfungsi menghubungkan beberapa jaringan menjadi satu sistem. Router bekerja dengan meneruskan paket data berdasarkan alamat tujuan agar data sampai ke jaringan yang benar.\n\n'
@@ -1483,7 +1309,7 @@ List<MaterialData> materials = [
   MaterialData(
     id: 'network-device-switch',
     title: 'Switch',
-    category: 'Network Devices',
+    category: 'Perangkat Jaringan',
     description: 'Switch adalah perangkat jaringan yang menghubungkan banyak perangkat dalam satu jaringan lokal secara lebih efisien.',
     content:
         'Switch adalah perangkat jaringan yang berfungsi menghubungkan beberapa perangkat dalam satu jaringan lokal, seperti komputer, printer, server, dan laptop. Switch bekerja dengan meneruskan data berdasarkan alamat MAC, sehingga pengiriman data lebih cepat dan lebih tepat sasaran.\n\n'
@@ -1501,7 +1327,7 @@ List<MaterialData> materials = [
   MaterialData(
     id: 'network-device-access-point',
     title: 'Access Point',
-    category: 'Network Devices',
+    category: 'Perangkat Jaringan',
     description: 'Access Point adalah perangkat yang menyediakan koneksi nirkabel agar perangkat dapat terhubung ke jaringan Wi-Fi.',
     content:
         'Access Point (AP) adalah perangkat jaringan yang menyediakan akses nirkabel menggunakan teknologi Wi-Fi. AP biasanya terhubung ke router atau switch melalui kabel, lalu menyebarkan sinyal Wi-Fi ke perangkat seperti laptop, smartphone, dan tablet.\n\n'
@@ -1519,7 +1345,7 @@ List<MaterialData> materials = [
   MaterialData(
     id: 'troubleshooting-network',
     title: 'Troubleshooting Jaringan',
-    category: 'Troubleshooting',
+    category: 'Dasar Jaringan Komputer',
     description: 'Troubleshooting jaringan adalah proses mencari dan memperbaiki gangguan agar jaringan kembali berfungsi normal.',
     content:
         'Troubleshooting jaringan merupakan langkah sistematis untuk menemukan penyebab gangguan pada jaringan komputer lalu memperbaikinya. Gangguan bisa terjadi karena kabel putus, IP tidak sesuai, router rusak, atau sinyal Wi-Fi lemah. Proses ini penting agar jaringan dapat kembali berfungsi seperti semula.\n\n'
@@ -1533,133 +1359,89 @@ List<MaterialData> materials = [
         '• Tujuannya adalah jaringan kembali normal dan stabil.',
     icon: Icons.build,
   ),
-];
-
-// ============================================================
-// DATA QUIZ
-// ============================================================
-
-List<QuizQuestion> quizQuestions = [
-  QuizQuestion(
-    question:
-        'Komponen yang berfungsi sebagai pusat pemrosesan komputer adalah?',
-    options: ['RAM', 'Processor', 'Keyboard', 'Monitor'],
-    correctAnswer: 1,
-    difficulty: QuizDifficulty.easy,
-    category: 'Computer Basics',
+  MaterialData(
+    id: 'input-keyboard-mouse',
+    title: 'Keyboard dan Mouse',
+    category: 'Perangkat Input dan Output',
+    description: 'Keyboard dan mouse merupakan perangkat input untuk memasukkan perintah serta mengendalikan pointer pada komputer.',
+    content:
+        'Perangkat input digunakan untuk memasukkan data atau perintah ke komputer. Keyboard membantu pengguna mengetik teks, angka, dan kombinasi tombol. Mouse digunakan untuk menggerakkan pointer, memilih objek, membuka menu, serta menjalankan perintah dengan klik.\n\n'
+        'Perangkat ini dapat terhubung melalui kabel USB atau secara nirkabel. Contoh penggunaannya adalah mengetik tugas sekolah dengan keyboard dan memilih file menggunakan mouse.',
+    importantPoints:
+        '• Keyboard memasukkan teks, angka, dan perintah.\n'
+        '• Mouse mengendalikan pointer dan memilih objek.\n'
+        '• Keduanya termasuk perangkat input.',
+    icon: Icons.keyboard,
   ),
-
-  QuizQuestion(
-    question: 'Apa fungsi utama RAM?',
-    options: [
-      'Menyimpan data sementara',
-      'Menampilkan gambar',
-      'Menghubungkan komputer ke internet',
-      'Mencetak dokumen',
-    ],
-    correctAnswer: 0,
-    difficulty: QuizDifficulty.easy,
-    category: 'Computer Basics',
+  MaterialData(
+    id: 'output-monitor-printer',
+    title: 'Monitor dan Printer',
+    category: 'Perangkat Input dan Output',
+    description: 'Monitor dan printer menyajikan hasil pengolahan komputer dalam bentuk visual dan cetakan.',
+    content:
+        'Perangkat output menampilkan hasil pengolahan data komputer kepada pengguna. Monitor menampilkan teks, gambar, dan video pada layar. Printer menghasilkan salinan fisik dokumen atau gambar ke media kertas.\n\n'
+        'Kualitas monitor dapat dilihat dari ukuran, resolusi, dan jenis panel. Printer dapat menggunakan teknologi inkjet atau laser, bergantung pada kebutuhan pencetakan.',
+    importantPoints:
+        '• Monitor menampilkan keluaran secara visual.\n'
+        '• Printer mencetak dokumen ke kertas.\n'
+        '• Keduanya termasuk perangkat output.',
+    icon: Icons.print,
   ),
-
-  QuizQuestion(
-    question: 'Dua subnet perlu bertukar data. Perangkat apa yang meneruskan paket antarjaringan?',
-    options: ['Keyboard', 'Monitor', 'Router', 'Mouse'],
-    correctAnswer: 2,
-    difficulty: QuizDifficulty.medium,
-    category: 'Network Devices',
+  MaterialData(
+    id: 'software-application',
+    title: 'Aplikasi Komputer',
+    category: 'Software (Perangkat Lunak)',
+    description: 'Aplikasi adalah perangkat lunak yang membantu pengguna menyelesaikan tugas tertentu.',
+    content:
+        'Aplikasi komputer merupakan program yang dibuat untuk menjalankan pekerjaan tertentu. Contohnya aplikasi pengolah kata untuk membuat dokumen, spreadsheet untuk mengolah angka, browser untuk membuka halaman web, dan aplikasi presentasi untuk menyusun bahan paparan.\n\n'
+        'Aplikasi berjalan dengan dukungan sistem operasi. Pengguna sebaiknya memilih aplikasi sesuai kebutuhan, memasangnya dari sumber tepercaya, dan memperbaruinya secara berkala.',
+    importantPoints:
+        '• Aplikasi membantu tugas tertentu.\n'
+        '• Contohnya pengolah kata, browser, dan spreadsheet.\n'
+        '• Aplikasi berjalan di atas sistem operasi.',
+    icon: Icons.apps,
   ),
-
-  QuizQuestion(
-    question: 'IP Address digunakan untuk?',
-    options: [
-      'Mengidentifikasi perangkat dalam jaringan',
-      'Menyimpan file',
-      'Menampilkan gambar',
-      'Menjalankan processor',
-    ],
-    correctAnswer: 0,
-    difficulty: QuizDifficulty.easy,
-    category: 'Networking',
-  ),
-
-  QuizQuestion(
-    question: 'Sistem operasi termasuk ke dalam jenis?',
-    options: ['Hardware', 'Software', 'Brainware', 'Network Device'],
-    correctAnswer: 1,
-    difficulty: QuizDifficulty.easy,
-    category: 'Software',
-  ),
-
-  QuizQuestion(
-    question: 'Komputer dalam satu LAN kabel perlu terhubung melalui titik pusat. Perangkat apa yang sesuai?',
-    options: ['Switch', 'Monitor', 'Printer', 'Keyboard'],
-    correctAnswer: 0,
-    difficulty: QuizDifficulty.medium,
-    category: 'Network Devices',
-  ),
-
-  QuizQuestion(
-    question: 'Kepanjangan dari LAN adalah?',
-    options: [
-      'Local Area Network',
-      'Large Area Network',
-      'Local Access Node',
-      'Link Area Network',
-    ],
-    correctAnswer: 0,
-    difficulty: QuizDifficulty.easy,
-    category: 'Networking',
-  ),
-
-  QuizQuestion(
-    question: 'Perangkat yang menyediakan koneksi Wi-Fi disebut?',
-    options: ['RAM', 'Access Point', 'Processor', 'Hard Disk'],
-    correctAnswer: 1,
-    difficulty: QuizDifficulty.easy,
-    category: 'Network Devices',
-  ),
-
-  QuizQuestion(
-    question: 'Contoh media penyimpanan adalah?',
-    options: ['SSD', 'Keyboard', 'Monitor', 'Mouse'],
-    correctAnswer: 0,
-    difficulty: QuizDifficulty.easy,
-    category: 'Hardware',
-  ),
-
-  QuizQuestion(
-    question: 'Teknisi mengirim permintaan echo ICMP untuk memastikan host merespons. Perintah apa yang digunakan?',
-    options: ['copy', 'ping', 'delete', 'format'],
-    correctAnswer: 1,
-    difficulty: QuizDifficulty.medium,
-    category: 'Troubleshooting',
-  ),
-
-  QuizQuestion(
-    question: 'Komputer dapat mengakses perangkat satu subnet, tetapi gagal mencapai jaringan lain. IP dan DNS benar. Konfigurasi apa yang paling perlu diperiksa?',
-    options: ['DNS', 'Default gateway', 'Nama komputer', 'Kecepatan switch'],
-    correctAnswer: 1,
-    difficulty: QuizDifficulty.hard,
-    category: 'Troubleshooting',
-  ),
-
-  QuizQuestion(
-    question: 'Situs dapat dibuka memakai alamat IP, tetapi tidak dengan nama domain. Koneksi jaringan lain normal. Layanan apa yang paling mungkin bermasalah?',
-    options: ['DHCP', 'DNS', 'Default gateway', 'Access point'],
-    correctAnswer: 1,
-    difficulty: QuizDifficulty.hard,
-    category: 'Troubleshooting',
-  ),
-
-  QuizQuestion(
-    question: 'Dua perangkat tersambung ke switch yang sama tetapi gagal berkomunikasi. Kabel baik dan alamat IP berada di jaringan berbeda karena prefix salah. Pengaturan apa yang perlu dikoreksi?',
-    options: ['Subnet mask', 'Nama host', 'DNS publik', 'SSID Wi-Fi'],
-    correctAnswer: 0,
-    difficulty: QuizDifficulty.hard,
-    category: 'Troubleshooting',
+  MaterialData(
+    id: 'computer-terminology-data-information',
+    title: 'Data dan Informasi',
+    category: 'Istilah-Istilah Komputer',
+    description: 'Data adalah fakta yang belum diolah, sedangkan informasi merupakan hasil pengolahan data yang bermakna.',
+    content:
+        'Data dapat berupa angka, teks, gambar, atau suara yang dimasukkan ke komputer. Setelah data diproses dan disusun sesuai tujuan, hasilnya menjadi informasi yang dapat dipahami dan digunakan.\n\n'
+        'Sebagai contoh, daftar nilai siswa merupakan data. Rata-rata nilai yang dihitung dari daftar tersebut menjadi informasi untuk membantu memahami hasil belajar.',
+    importantPoints:
+        '• Data merupakan bahan yang diolah komputer.\n'
+        '• Informasi adalah hasil pengolahan data.\n'
+        '• Informasi membantu pengguna mengambil keputusan.',
+    icon: Icons.data_object,
   ),
 ];
+
+bool migrateMaterialCategories(List<MaterialData> catalog) {
+  var changed = false;
+  for (final material in catalog) {
+    final category = switch (material.category) {
+      'Computer Basics' => 'Pengenalan Komputer',
+      'Hardware' => 'Hardware (Perangkat Keras)',
+      'Software' =>
+        material.title == 'Sistem Operasi'
+            ? 'Sistem Operasi'
+            : 'Software (Perangkat Lunak)',
+      'Networking' =>
+        material.title == 'IP Address'
+            ? 'Istilah-Istilah Komputer'
+            : 'Dasar Jaringan Komputer',
+      'Network Devices' => 'Perangkat Jaringan',
+      'Troubleshooting' => 'Dasar Jaringan Komputer',
+      _ => material.category,
+    };
+    if (category != material.category) {
+      material.category = category;
+      changed = true;
+    }
+  }
+  return changed;
+}
 
 // ============================================================
 // DATA USER
@@ -1670,15 +1452,9 @@ List<Map<String, String>> users = [
     'name': 'Siswa TKJ',
     'email': 'siswa@gmail.com',
     'password': '123456',
-    'class': 'XI TKJ 1',
+    'class': 'X TKJ 1',
   },
 ];
-
-// ============================================================
-// DATA HASIL QUIZ
-// ============================================================
-
-List<Map<String, dynamic>> quizHistory = [];
 
 // ============================================================
 // APP
@@ -1873,6 +1649,7 @@ class _LoginPageState extends State<LoginPage>
     if (!mounted) return;
 
     if (email == 'admin@gmail.com' && password == 'admin123') {
+      adminSession.authenticate();
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const AdminDashboard()),
@@ -1881,17 +1658,26 @@ class _LoginPageState extends State<LoginPage>
       return;
     }
 
+    adminSession.clear();
     final user = users.where(
       (user) => user['email'] == email && user['password'] == password,
     );
 
     if (user.isNotEmpty) {
+      final className = user.first['class']?.trim().toUpperCase() ?? '';
+      if (!className.startsWith('X ') ||
+          !(className.contains('TKJ') || className.contains('TJKT'))) {
+        setState(() => _isLoggingIn = false);
+        showMessage('Login hanya tersedia untuk siswa kelas X TKJ/TJKT.');
+        return;
+      }
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
           builder: (_) => HomePage(
             userName: user.first['name']!,
             userEmail: user.first['email']!,
+            userClass: user.first['class']!,
           ),
         ),
       );
@@ -1919,7 +1705,7 @@ class _LoginPageState extends State<LoginPage>
     return Scaffold(
       body: AuthScreenShell(
         animation: _entryController,
-        subtitle: 'Explore Technology, Expand Your Knowledge',
+        subtitle: 'Kamus digital dasar komputer untuk kelas X TKJ/TJKT',
         footer: Column(
           children: [
             ThemeModeTile(
@@ -2059,7 +1845,7 @@ class _RegisterPageState extends State<RegisterPage>
     duration: const Duration(milliseconds: 750),
   )..forward();
 
-  void register() {
+  Future<void> register() async {
     final name = nameController.text.trim();
     final email = emailController.text.trim();
     final className = classController.text.trim();
@@ -2072,6 +1858,13 @@ class _RegisterPageState extends State<RegisterPage>
       showMessage('Semua data harus diisi.');
       return;
     }
+    final normalizedClass = className.toUpperCase();
+    if (!normalizedClass.startsWith('X ') ||
+        !(normalizedClass.contains('TKJ') ||
+            normalizedClass.contains('TJKT'))) {
+      showMessage('Pendaftaran hanya untuk siswa kelas X TKJ/TJKT.');
+      return;
+    }
 
     final emailExists = users.any((user) => user['email'] == email);
 
@@ -2080,12 +1873,17 @@ class _RegisterPageState extends State<RegisterPage>
       return;
     }
 
-    users.add({
+    final account = {
       'name': name,
       'email': email,
       'password': password,
       'class': className,
-    });
+    };
+    if (!await userStore.save([...users, account])) {
+      showMessage('Akun gagal disimpan. Periksa penyimpanan lalu coba lagi.');
+      return;
+    }
+    users.add(account);
 
     showDialog(
       context: context,
@@ -2168,8 +1966,11 @@ class _RegisterPageState extends State<RegisterPage>
             const SizedBox(height: 13),
             TextField(
               controller: classController,
+              decoration: _authInputDecoration(
+                'Kelas (contoh: X TKJ 1)',
+                Icons.school_outlined,
+              ),
               style: const TextStyle(color: Colors.white),
-              decoration: _authInputDecoration('Kelas', Icons.school_outlined),
             ),
             const SizedBox(height: 13),
             TextField(
@@ -2201,8 +2002,14 @@ class _RegisterPageState extends State<RegisterPage>
 class HomePage extends StatefulWidget {
   final String userName;
   final String userEmail;
+  final String userClass;
 
-  const HomePage({super.key, required this.userName, required this.userEmail});
+  const HomePage({
+    super.key,
+    required this.userName,
+    required this.userEmail,
+    this.userClass = 'X TKJ/TJKT',
+  });
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -2214,13 +2021,62 @@ class _HomePageState extends State<HomePage> {
 
   Set<String> bookmarks = {};
 
-  int completedMaterials = 0;
-
   @override
   void initState() {
     super.initState();
     _historyStore = MaterialHistoryStore(userEmail: widget.userEmail);
     _historyStore.load();
+    _loadBookmarks();
+  }
+
+  Future<void> _loadBookmarks() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final stored = preferences.getStringList(_bookmarkStorageKey);
+      if (!mounted) return;
+      setState(() {
+        bookmarks = (stored ?? <String>[]).map((value) {
+          return materials
+                  .where(
+                    (material) =>
+                        material.id == value || material.title == value,
+                  )
+                  .firstOrNull
+                  ?.id ??
+              value;
+        }).toSet();
+      });
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Bookmark gagal dimuat: $error')));
+    }
+  }
+
+  String get _bookmarkStorageKey =>
+      'tech_explorer_bookmarks_${widget.userEmail.trim().toLowerCase()}';
+
+  Future<void> _bookmarksChanged() async {
+    setState(() {});
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final saved = await preferences.setStringList(
+        _bookmarkStorageKey,
+        bookmarks.toList(),
+      );
+      if (!saved && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Bookmark gagal disimpan.')),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Bookmark gagal disimpan: $error')),
+        );
+      }
+    }
   }
 
   @override
@@ -2236,26 +2092,20 @@ class _HomePageState extends State<HomePage> {
       LearnPage(
         bookmarks: bookmarks,
         historyStore: _historyStore,
-        onBookmarkChanged: () {
-          setState(() {});
-        },
-      ),
-      QuizPage(
-        onQuizFinished: () {
-          setState(() {});
-        },
+        onBookmarkChanged: _bookmarksChanged,
       ),
       BookmarkPage(
         bookmarks: bookmarks,
         historyStore: _historyStore,
-        onBookmarkChanged: () {
-          setState(() {});
-        },
+        onBookmarkChanged: _bookmarksChanged,
       ),
       ProfilePage(
         userName: widget.userName,
         email: widget.userEmail,
-        completedMaterials: completedMaterials,
+        studentClass: widget.userClass,
+        historyStore: _historyStore,
+        bookmarks: bookmarks,
+        onBookmarkChanged: _bookmarksChanged,
       ),
     ];
 
@@ -2298,12 +2148,7 @@ class _HomePageState extends State<HomePage> {
           BottomNavigationBarItem(
             icon: Icon(Icons.menu_book_outlined),
             activeIcon: Icon(Icons.menu_book),
-            label: 'Learn',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.quiz_outlined),
-            activeIcon: Icon(Icons.quiz),
-            label: 'Quiz',
+            label: 'Materi',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.bookmark_outline),
@@ -2313,7 +2158,7 @@ class _HomePageState extends State<HomePage> {
           BottomNavigationBarItem(
             icon: Icon(Icons.person_outline),
             activeIcon: Icon(Icons.person),
-            label: 'Profile',
+            label: 'Profil',
           ),
         ],
       ),
@@ -2321,10 +2166,6 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget buildHome() {
-    final progress = materials.isEmpty
-        ? 0.0
-        : (completedMaterials / materials.length).clamp(0.0, 1.0);
-
     return SafeArea(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -2340,7 +2181,7 @@ class _HomePageState extends State<HomePage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'RUANG BELAJAR',
+                        'KAMUS DIGITAL KOMPUTER',
                         style: Theme.of(context).textTheme.labelSmall?.copyWith(
                           color: Theme.of(context).colorScheme.secondary,
                           fontWeight: FontWeight.w800,
@@ -2353,7 +2194,7 @@ class _HomePageState extends State<HomePage> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Siap melanjutkan pembelajaran hari ini?',
+                        'Materi dasar komputer untuk kelas X TKJ/TJKT',
                         style: TextStyle(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
@@ -2378,9 +2219,7 @@ class _HomePageState extends State<HomePage> {
                       builder: (_) => SearchPage(
                         bookmarks: bookmarks,
                         historyStore: _historyStore,
-                        onBookmarkChanged: () {
-                          setState(() {});
-                        },
+                        onBookmarkChanged: _bookmarksChanged,
                       ),
                     ),
                   );
@@ -2417,17 +2256,17 @@ class _HomePageState extends State<HomePage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Progress Belajar',
+                    'Kamus Digital Komputer',
                     style: TextStyle(color: Colors.white70),
                   ),
 
                   const SizedBox(height: 8),
 
-                  Text(
-                    '${(progress * 100).round()}%',
-                    style: const TextStyle(
+                  const Text(
+                    'Belajar istilah dan materi komputer dasar',
+                    style: TextStyle(
                       color: Colors.white,
-                      fontSize: 28,
+                      fontSize: 18,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -2437,7 +2276,7 @@ class _HomePageState extends State<HomePage> {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(10),
                     child: LinearProgressIndicator(
-                      value: progress,
+                      value: 1,
                       minHeight: 8,
                       backgroundColor: Colors.white30,
                       valueColor: const AlwaysStoppedAnimation<Color>(
@@ -2482,9 +2321,7 @@ class _HomePageState extends State<HomePage> {
                             category: category['name'] as String,
                             bookmarks: bookmarks,
                             historyStore: _historyStore,
-                            onBookmarkChanged: () {
-                              setState(() {});
-                            },
+                            onBookmarkChanged: _bookmarksChanged,
                           ),
                         ),
                       );
@@ -2588,9 +2425,7 @@ class _HomePageState extends State<HomePage> {
                             material: material,
                             bookmarks: bookmarks,
                             historyStore: _historyStore,
-                            onBookmarkChanged: () {
-                              setState(() {});
-                            },
+                            onBookmarkChanged: _bookmarksChanged,
                           ),
                         ),
                       );
@@ -2627,9 +2462,7 @@ class _HomePageState extends State<HomePage> {
                                 builder: (_) => MaterialHistoryPage(
                                   historyStore: _historyStore,
                                   bookmarks: bookmarks,
-                                  onBookmarkChanged: () {
-                                    setState(() {});
-                                  },
+                                  onBookmarkChanged: _bookmarksChanged,
                                 ),
                               ),
                             );
@@ -2674,9 +2507,7 @@ class _HomePageState extends State<HomePage> {
                                 entry,
                                 historyStore: _historyStore,
                                 bookmarks: bookmarks,
-                                onBookmarkChanged: () {
-                                  setState(() {});
-                                },
+                                onBookmarkChanged: _bookmarksChanged,
                               ),
                             ),
                           ),
@@ -2708,22 +2539,67 @@ class _HomePageState extends State<HomePage> {
 // DATA KATEGORI
 // ============================================================
 
+Map<String, dynamic> categoryDetails(String name) {
+  final details = switch (name) {
+    'Pengenalan Komputer' => (Icons.computer, const Color(0xFF3785F5)),
+    'Hardware (Perangkat Keras)' => (Icons.memory, const Color(0xFF15AFC0)),
+    'Software (Perangkat Lunak)' => (Icons.apps, const Color(0xFF8C68F6)),
+    'Sistem Operasi' => (Icons.settings_suggest, const Color(0xFF16A3A8)),
+    'Perangkat Input dan Output' => (
+      Icons.keyboard_alt_outlined,
+      const Color(0xFF4D75DE),
+    ),
+    'Dasar Jaringan Komputer' => (Icons.wifi, const Color(0xFF16A3A8)),
+    'Perangkat Jaringan' => (Icons.router, const Color(0xFF4D75DE)),
+    'Istilah-Istilah Komputer' => (Icons.terminal, const Color(0xFF8C68F6)),
+    _ => (Icons.folder_outlined, const Color(0xFF3785F5)),
+  };
+  return {'name': name, 'icon': details.$1, 'accent': details.$2};
+}
+
 final List<Map<String, dynamic>> categoryData = [
-  {
-    'name': 'Computer Basics',
-    'icon': Icons.computer,
-    'accent': Color(0xFF3785F5),
-  },
-  {'name': 'Hardware', 'icon': Icons.memory, 'accent': Color(0xFF15AFC0)},
-  {'name': 'Software', 'icon': Icons.apps, 'accent': Color(0xFF8C68F6)},
-  {'name': 'Networking', 'icon': Icons.wifi, 'accent': Color(0xFF16A3A8)},
-  {
-    'name': 'Network Devices',
-    'icon': Icons.router,
-    'accent': Color(0xFF4D75DE),
-  },
-  {'name': 'Troubleshooting', 'icon': Icons.build, 'accent': Color(0xFFDB8B3D)},
+  categoryDetails('Pengenalan Komputer'),
+  categoryDetails('Hardware (Perangkat Keras)'),
+  categoryDetails('Software (Perangkat Lunak)'),
+  categoryDetails('Sistem Operasi'),
+  categoryDetails('Perangkat Input dan Output'),
+  categoryDetails('Dasar Jaringan Komputer'),
+  categoryDetails('Perangkat Jaringan'),
+  categoryDetails('Istilah-Istilah Komputer'),
 ];
+
+class CategoryStore {
+  static const String _storageKey = 'tech_explorer_categories_v1';
+
+  Future<List<String>?> load() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final rawValue = preferences.getString(_storageKey);
+      if (rawValue == null) return null;
+      final decoded = jsonDecode(rawValue);
+      if (decoded is! List || !decoded.every((item) => item is String)) {
+        return null;
+      }
+      return decoded.cast<String>();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<bool> save(Iterable<Map<String, dynamic>> categories) async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      return preferences.setString(
+        _storageKey,
+        jsonEncode(categories.map((item) => item['name']).toList()),
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+}
+
+final CategoryStore categoryStore = CategoryStore();
 
 // ============================================================
 // LEARN PAGE
@@ -2751,8 +2627,11 @@ class _LearnPageState extends State<LearnPage> {
   @override
   Widget build(BuildContext context) {
     final filtered = materials.where((material) {
-      return material.title.toLowerCase().contains(search.toLowerCase()) ||
-          material.category.toLowerCase().contains(search.toLowerCase());
+      final query = search.toLowerCase();
+      return material.title.toLowerCase().contains(query) ||
+          material.category.toLowerCase().contains(query) ||
+          material.description.toLowerCase().contains(query) ||
+          material.content.toLowerCase().contains(query);
     }).toList();
 
     return SafeArea(
@@ -2770,7 +2649,7 @@ class _LearnPageState extends State<LearnPage> {
           Padding(
             padding: EdgeInsets.symmetric(horizontal: 20),
             child: Text(
-              'Pelajari materi dasar Teknik Komputer dan Jaringan.',
+              'Jelajahi istilah dan materi komputer dasar.',
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
@@ -2802,7 +2681,7 @@ class _LearnPageState extends State<LearnPage> {
                     itemBuilder: (_, index) {
                       final material = filtered[index];
 
-                      final saved = widget.bookmarks.contains(material.title);
+                      final saved = widget.bookmarks.contains(material.id);
 
                       return InteractiveFeedback(
                         child: Card(
@@ -2837,9 +2716,9 @@ class _LearnPageState extends State<LearnPage> {
                               ),
                               onPressed: () {
                                 if (saved) {
-                                  widget.bookmarks.remove(material.title);
+                                  widget.bookmarks.remove(material.id);
                                 } else {
-                                  widget.bookmarks.add(material.title);
+                                  widget.bookmarks.add(material.id);
                                 }
 
                                 widget.onBookmarkChanged();
@@ -2898,7 +2777,11 @@ class _SearchPageState extends State<SearchPage> {
   @override
   Widget build(BuildContext context) {
     final result = materials.where((material) {
-      return material.title.toLowerCase().contains(search.toLowerCase());
+      final query = search.toLowerCase();
+      return material.title.toLowerCase().contains(query) ||
+          material.category.toLowerCase().contains(query) ||
+          material.description.toLowerCase().contains(query) ||
+          material.content.toLowerCase().contains(query);
     }).toList();
 
     return Scaffold(
@@ -2915,7 +2798,7 @@ class _SearchPageState extends State<SearchPage> {
                 });
               },
               decoration: inputDecoration(
-                'Masukkan nama materi...',
+                'Cari istilah atau materi...',
                 Icons.search,
               ),
             ),
@@ -3064,7 +2947,7 @@ class _MaterialDetailPageState extends State<MaterialDetailPage> {
 
   @override
   Widget build(BuildContext context) {
-    final saved = widget.bookmarks.contains(widget.material.title);
+    final saved = widget.bookmarks.contains(widget.material.id);
 
     return Scaffold(
       appBar: AppBar(
@@ -3075,9 +2958,9 @@ class _MaterialDetailPageState extends State<MaterialDetailPage> {
             onPressed: () {
               setState(() {
                 if (saved) {
-                  widget.bookmarks.remove(widget.material.title);
+                  widget.bookmarks.remove(widget.material.id);
                 } else {
-                  widget.bookmarks.add(widget.material.title);
+                  widget.bookmarks.add(widget.material.id);
                 }
               });
 
@@ -3218,23 +3101,6 @@ class _MaterialDetailPageState extends State<MaterialDetailPage> {
               child: Text(
                 widget.material.importantPoints,
                 style: const TextStyle(fontSize: 15, height: 1.7),
-              ),
-            ),
-
-            const SizedBox(height: 30),
-
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const QuizPage()),
-                  );
-                },
-                icon: const Icon(Icons.quiz),
-                label: const Text('Kerjakan Quiz'),
               ),
             ),
           ],
@@ -3438,7 +3304,7 @@ class BookmarkPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final savedMaterials = materials
-        .where((material) => bookmarks.contains(material.title))
+        .where((material) => bookmarks.contains(material.id))
         .toList();
 
     return SafeArea(
@@ -3502,7 +3368,7 @@ class BookmarkPage extends StatelessWidget {
                                 color: Theme.of(context).colorScheme.primary,
                               ),
                               onPressed: () {
-                                bookmarks.remove(material.title);
+                                bookmarks.remove(material.id);
 
                                 onBookmarkChanged();
                               },
@@ -3533,1002 +3399,29 @@ class BookmarkPage extends StatelessWidget {
 }
 
 // ============================================================
-// QUIZ
-// ============================================================
-
-class QuizPage extends StatefulWidget {
-  final VoidCallback? onQuizFinished;
-  final Duration duration;
-  final DateTime Function()? clock;
-  final List<QuizQuestion>? questionBank;
-
-  const QuizPage({
-    super.key,
-    this.onQuizFinished,
-    this.duration = const Duration(minutes: 15),
-    this.clock,
-    this.questionBank,
-  });
-
-  @override
-  State<QuizPage> createState() => _QuizPageState();
-}
-
-class _QuizPageState extends State<QuizPage> with WidgetsBindingObserver {
-  int currentQuestion = 0;
-  int score = 0;
-  final Map<int, int> answers = {};
-  List<QuizQuestion> _questions = [];
-  QuizDifficulty? _selectedDifficulty;
-  DateTime? _deadline;
-  Duration _remainingTime = Duration.zero;
-  Timer? _countdownTimer;
-  bool _quizStarted = false;
-  bool _isFinishing = false;
-  bool _isFinishDialogOpen = false;
-
-  int? get selectedAnswer => answers[currentQuestion];
-
-  List<QuizQuestion> get _questionBank => widget.questionBank ?? quizQuestions;
-
-  void _startQuiz() {
-    final difficulty = _selectedDifficulty;
-    if (difficulty == null) return;
-
-    final selectedQuestions = questionsForDifficulty(_questionBank, difficulty);
-    if (selectedQuestions.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Belum ada soal untuk tingkat ${difficulty.label}.'),
-        ),
-      );
-      return;
-    }
-
-    setState(() {
-      _questions = selectedQuestions;
-      currentQuestion = 0;
-      score = 0;
-      answers.clear();
-      _remainingTime = widget.duration;
-      _deadline = _currentTime().add(widget.duration);
-      _quizStarted = true;
-    });
-    WidgetsBinding.instance.addObserver(this);
-    _countdownTimer = Timer.periodic(
-      const Duration(seconds: 1),
-      (_) => _refreshCountdown(),
-    );
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (_quizStarted && state == AppLifecycleState.resumed) {
-      _refreshCountdown();
-    }
-  }
-
-  void _refreshCountdown() {
-    if (!mounted || _isFinishing) return;
-    if (_expireIfNeeded()) return;
-    final deadline = _deadline;
-    if (deadline == null) return;
-    final remaining = deadline.difference(_currentTime());
-    setState(() {
-      _remainingTime = Duration(seconds: remaining.inSeconds);
-    });
-  }
-
-  DateTime _currentTime() => widget.clock?.call() ?? DateTime.now();
-
-  bool _expireIfNeeded() {
-    final deadline = _deadline;
-    if (!_quizStarted || deadline == null || deadline.isAfter(_currentTime())) {
-      return false;
-    }
-    _remainingTime = Duration.zero;
-    _finishQuiz(timedOut: true);
-    return true;
-  }
-
-  void _finishQuiz({required bool timedOut}) {
-    if (_isFinishing) return;
-    _isFinishing = true;
-    _countdownTimer?.cancel();
-
-    if (_isFinishDialogOpen) {
-      _isFinishDialogOpen = false;
-      Navigator.of(context).pop();
-    }
-
-    score = answers.entries
-        .where((entry) => entry.value == _questions[entry.key].correctAnswer)
-        .length;
-    final finalScore = ((score / _questions.length) * 100).round();
-    quizHistory.add({
-      'score': finalScore,
-      'correct': score,
-      'total': _questions.length,
-      'difficulty': _selectedDifficulty!.name,
-      'difficultyLabel': _selectedDifficulty!.label,
-      'date': _currentTime(),
-    });
-    widget.onQuizFinished?.call();
-
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (_) => QuizResultPage(
-          score: score,
-          total: _questions.length,
-          timedOut: timedOut,
-          difficulty: _selectedDifficulty,
-        ),
-      ),
-    );
-  }
-
-  String _formatRemainingTime() {
-    final totalSeconds = _remainingTime.inSeconds.clamp(0, 599999);
-    final minutes = (totalSeconds ~/ 60).toString().padLeft(2, '0');
-    final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
-    return '$minutes:$seconds';
-  }
-
-  void chooseAnswer(int answer) {
-    if (_isFinishing) return;
-    if (_expireIfNeeded()) return;
-    setState(() {
-      answers[currentQuestion] = answer;
-    });
-  }
-
-  void nextQuestion() {
-    if (_isFinishing) return;
-    if (_expireIfNeeded()) return;
-
-    if (currentQuestion < _questions.length - 1) {
-      setState(() {
-        currentQuestion++;
-      });
-    } else {
-      _requestFinishQuiz();
-    }
-  }
-
-  void previousQuestion() {
-    if (_isFinishing || _expireIfNeeded() || currentQuestion == 0) return;
-    setState(() => currentQuestion--);
-  }
-
-  void goToQuestion(int index) {
-    if (_isFinishing || _expireIfNeeded() || index == currentQuestion) return;
-    setState(() => currentQuestion = index);
-  }
-
-  Future<void> _requestFinishQuiz() async {
-    if (_isFinishing || _isFinishDialogOpen || _expireIfNeeded()) return;
-
-    if (answers.length < _questions.length) {
-      _isFinishDialogOpen = true;
-      final shouldFinish = await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('Masih ada soal belum dijawab'),
-          content: Text(
-            'Kamu baru menjawab ${answers.length} dari '
-            '${_questions.length} soal. Tetap kumpulkan kuis?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Kembali'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Kumpulkan'),
-            ),
-          ],
-        ),
-      );
-      _isFinishDialogOpen = false;
-      if (!mounted || _isFinishing || shouldFinish != true) return;
-    }
-
-    _finishQuiz(timedOut: false);
-  }
-
-  @override
-  void dispose() {
-    _countdownTimer?.cancel();
-    if (_quizStarted) WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (!_quizStarted) return _buildDifficultySelection(context);
-
-    final question = _questions[currentQuestion];
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('Quiz TKJ')),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Text(
-                    'Soal ${currentQuestion + 1} dari ${_questions.length}',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
-                ),
-                _buildTimer(context),
-              ],
-            ),
-
-            const SizedBox(height: 15),
-
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: LinearProgressIndicator(
-                value: (currentQuestion + 1) / _questions.length,
-                minHeight: 7,
-                backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                color: Theme.of(context).colorScheme.secondary,
-              ),
-            ),
-
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Chip(
-                avatar: Icon(
-                  Icons.tune,
-                  size: 18,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-                label: Text('Tingkat: ${_selectedDifficulty!.label}'),
-                visualDensity: VisualDensity.compact,
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            _buildQuestionNavigation(context),
-
-            const SizedBox(height: 14),
-
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 13,
-                      ),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            Theme.of(context).colorScheme.surface,
-                            Theme.of(context).colorScheme.primary.withValues(
-                              alpha:
-                                  Theme.of(context).brightness ==
-                                      Brightness.dark
-                                  ? 0.13
-                                  : 0.06,
-                            ),
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(21),
-                        border: Border.all(
-                          color: Theme.of(context).colorScheme.outlineVariant,
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'PILIH JAWABAN YANG TEPAT',
-                            style: Theme.of(context).textTheme.labelSmall
-                                ?.copyWith(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .secondary,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                          ),
-                          const SizedBox(height: 5),
-                          Text(
-                            question.question,
-                            style: Theme.of(context).textTheme.titleMedium
-                                ?.copyWith(fontSize: 17, height: 1.35),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 15),
-
-                    ...List.generate(question.options.length, (index) {
-                      final selected = selectedAnswer == index;
-
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        width: double.infinity,
-                        child: OutlinedButton(
-                          key: ValueKey('answer-$currentQuestion-$index'),
-                          onPressed: () {
-                            chooseAnswer(index);
-                          },
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.all(18),
-                            alignment: Alignment.centerLeft,
-                            backgroundColor: selected
-                                ? Theme.of(context).colorScheme.primaryContainer
-                                : Theme.of(context).colorScheme.surface,
-                            side: BorderSide(
-                              color: selected
-                                  ? Theme.of(context).colorScheme.primary
-                                  : Theme.of(context).colorScheme.outline,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 30,
-                                height: 30,
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  color: selected
-                                      ? Theme.of(context).colorScheme.primary
-                                      : Theme.of(context)
-                                            .colorScheme
-                                            .primaryContainer,
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Text(
-                                  String.fromCharCode(65 + index),
-                                  style: TextStyle(
-                                    color: selected
-                                        ? Theme.of(context)
-                                              .colorScheme
-                                              .onPrimary
-                                        : Theme.of(context)
-                                              .colorScheme
-                                              .onPrimaryContainer,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  question.options[index],
-                                  style: TextStyle(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurface,
-                                    fontWeight: selected
-                                        ? FontWeight.w700
-                                        : FontWeight.w500,
-                                  ),
-                                ),
-                              ),
-                              if (selected)
-                                Icon(
-                                  Icons.check_circle_rounded,
-                                  color: Theme.of(context).colorScheme.primary,
-                                  size: 20,
-                                ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }),
-
-                    const SizedBox(height: 18),
-
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: currentQuestion == 0 || _isFinishing
-                                ? null
-                                : previousQuestion,
-                            icon: const Icon(Icons.chevron_left),
-                            label: const Text('Sebelumnya'),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: _isFinishing ? null : nextQuestion,
-                            icon: Icon(
-                              currentQuestion == _questions.length - 1
-                                  ? Icons.check
-                                  : Icons.chevron_right,
-                            ),
-                            label: Text(
-                              currentQuestion == _questions.length - 1
-                                  ? 'Selesai'
-                                  : 'Soal Berikutnya',
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTimer(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final isWarning = _remainingTime <= const Duration(minutes: 1);
-    final foregroundColor = isWarning
-        ? colorScheme.onErrorContainer
-        : colorScheme.primary;
-
-    return Container(
-      key: const ValueKey('quiz-timer'),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: isWarning ? colorScheme.errorContainer : colorScheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isWarning ? colorScheme.error : colorScheme.outlineVariant,
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.timer_outlined, size: 20, color: foregroundColor),
-          const SizedBox(width: 7),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Sisa Waktu',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: isWarning
-                      ? colorScheme.onErrorContainer
-                      : colorScheme.onSurfaceVariant,
-                ),
-              ),
-              Text(
-                _formatRemainingTime(),
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: foregroundColor,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDifficultySelection(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Scaffold(
-      appBar: AppBar(title: const Text('Pilih Tingkat Kesulitan')),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Pilih tingkat sebelum memulai kuis.',
-                style: Theme.of(context).textTheme.bodyLarge
-                    ?.copyWith(color: colorScheme.onSurfaceVariant),
-              ),
-              const SizedBox(height: 20),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final cardWidth = constraints.maxWidth >= 720
-                      ? (constraints.maxWidth - 24) / 3
-                      : constraints.maxWidth;
-                  return Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: QuizDifficulty.values.map((difficulty) {
-                      final isSelected = _selectedDifficulty == difficulty;
-                      final questions = questionsForDifficulty(
-                        _questionBank,
-                        difficulty,
-                      );
-                      final accentColor = switch (difficulty) {
-                        QuizDifficulty.easy => colorScheme.primary,
-                        QuizDifficulty.medium => colorScheme.tertiary,
-                        QuizDifficulty.hard => colorScheme.error,
-                      };
-                      final selectedColor = switch (difficulty) {
-                        QuizDifficulty.easy => colorScheme.primaryContainer,
-                        QuizDifficulty.medium => colorScheme.tertiaryContainer,
-                        QuizDifficulty.hard => colorScheme.errorContainer,
-                      };
-                      final selectedForeground = switch (difficulty) {
-                        QuizDifficulty.easy => colorScheme.onPrimaryContainer,
-                        QuizDifficulty.medium =>
-                          colorScheme.onTertiaryContainer,
-                        QuizDifficulty.hard => colorScheme.onErrorContainer,
-                      };
-                      final icon = switch (difficulty) {
-                        QuizDifficulty.easy => Icons.sentiment_satisfied_alt,
-                        QuizDifficulty.medium => Icons.psychology_outlined,
-                        QuizDifficulty.hard =>
-                          Icons.local_fire_department_outlined,
-                      };
-
-                      return InteractiveFeedback(
-                        child: SizedBox(
-                          width: cardWidth,
-                          child: Material(
-                            color: isSelected
-                                ? selectedColor
-                                : colorScheme.surface,
-                            borderRadius: BorderRadius.circular(14),
-                            child: InkWell(
-                              key: ValueKey('difficulty-${difficulty.name}'),
-                              borderRadius: BorderRadius.circular(14),
-                              onTap: () => setState(
-                                () => _selectedDifficulty = difficulty,
-                              ),
-                              child: Container(
-                                constraints: const BoxConstraints(
-                                  minHeight: 142,
-                                ),
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(
-                                    color: isSelected
-                                        ? accentColor
-                                        : colorScheme.outlineVariant,
-                                    width: isSelected ? 2 : 1,
-                                  ),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Icon(icon, color: accentColor),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Text(
-                                            difficulty.label,
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .titleMedium
-                                                ?.copyWith(
-                                                  color: isSelected
-                                                      ? selectedForeground
-                                                      : colorScheme.onSurface,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                          ),
-                                        ),
-                                        if (isSelected)
-                                          Icon(
-                                            Icons.check_circle,
-                                            color: accentColor,
-                                          ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 10),
-                                    Text(
-                                      difficulty.description,
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodySmall
-                                          ?.copyWith(
-                                            color: isSelected
-                                                ? selectedForeground
-                                                : colorScheme.onSurfaceVariant,
-                                          ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      questions.isEmpty
-                                          ? 'Tidak tersedia'
-                                          : '${questions.length} soal',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .labelLarge
-                                          ?.copyWith(
-                                            color: accentColor,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  );
-                },
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton.icon(
-                  key: const ValueKey('start-quiz'),
-                  onPressed: _selectedDifficulty == null ? null : _startQuiz,
-                  icon: const Icon(Icons.play_arrow),
-                  label: const Text('Mulai Kuis'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildQuestionNavigation(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final answeredCount = answers.length;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Navigasi Soal',
-              style: Theme.of(context).textTheme.titleSmall
-                  ?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            Text(
-              'Terjawab: $answeredCount dari ${_questions.length}',
-              style: Theme.of(context).textTheme.bodySmall
-                  ?.copyWith(color: colorScheme.onSurfaceVariant),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-            maxCrossAxisExtent: 52,
-            mainAxisSpacing: 8,
-            crossAxisSpacing: 8,
-            childAspectRatio: 1,
-          ),
-          itemCount: _questions.length,
-          itemBuilder: (context, index) {
-            final isCurrent = index == currentQuestion;
-            final isAnswered = answers.containsKey(index);
-            final backgroundColor = isCurrent
-                ? colorScheme.primary
-                : isAnswered
-                ? colorScheme.secondaryContainer
-                : colorScheme.surface;
-            final foregroundColor = isCurrent
-                ? colorScheme.onPrimary
-                : isAnswered
-                ? colorScheme.onSecondaryContainer
-                : colorScheme.onSurfaceVariant;
-
-            return Semantics(
-              button: true,
-              selected: isCurrent,
-              label:
-                  'Soal ${index + 1}${isAnswered ? ', sudah dijawab' : ', belum dijawab'}${isCurrent ? ', saat ini' : ''}',
-              child: InteractiveFeedback(
-                enabled: !_isFinishing,
-                child: Material(
-                  color: backgroundColor,
-                  borderRadius: BorderRadius.circular(10),
-                  child: InkWell(
-                    key: ValueKey('question-number-$index'),
-                    borderRadius: BorderRadius.circular(10),
-                    onTap: _isFinishing ? null : () => goToQuestion(index),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: isCurrent
-                              ? colorScheme.primary
-                              : isAnswered
-                              ? colorScheme.secondary
-                              : colorScheme.outlineVariant,
-                          width: isCurrent ? 2 : 1,
-                        ),
-                      ),
-                      alignment: Alignment.center,
-                      child: Stack(
-                        children: [
-                          Center(
-                            child: Text(
-                              '${index + 1}',
-                              style: TextStyle(
-                                color: foregroundColor,
-                                fontWeight: isCurrent || isAnswered
-                                    ? FontWeight.bold
-                                    : FontWeight.normal,
-                              ),
-                            ),
-                          ),
-                          if (isAnswered)
-                            Positioned(
-                              right: 2,
-                              bottom: 1,
-                              child: Icon(
-                                Icons.check,
-                                size: 12,
-                                color: foregroundColor,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            );
-          },
-        ),
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 14,
-          runSpacing: 6,
-          children: [
-            _buildQuestionLegend(colorScheme.primary, 'Saat ini'),
-            _buildQuestionLegend(colorScheme.secondaryContainer, 'Terjawab'),
-            _buildQuestionLegend(
-              colorScheme.surface,
-              'Belum dijawab',
-              borderColor: colorScheme.outlineVariant,
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildQuestionLegend(
-    Color backgroundColor,
-    String label, {
-    Color? borderColor,
-  }) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(
-            color: backgroundColor,
-            borderRadius: BorderRadius.circular(3),
-            border: Border.all(color: borderColor ?? backgroundColor),
-          ),
-        ),
-        const SizedBox(width: 5),
-        Text(label, style: Theme.of(context).textTheme.bodySmall),
-      ],
-    );
-  }
-}
-
-// ============================================================
-// HASIL QUIZ
-// ============================================================
-
-class QuizResultPage extends StatelessWidget {
-  final int score;
-  final int total;
-  final bool timedOut;
-  final QuizDifficulty? difficulty;
-
-  const QuizResultPage({
-    super.key,
-    required this.score,
-    required this.total,
-    this.timedOut = false,
-    this.difficulty,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final nilai = ((score / total) * 100).round();
-
-    String message;
-
-    if (nilai >= 80) {
-      message = 'Pemahaman materi kamu sudah baik.';
-    } else if (nilai >= 60) {
-      message = 'Pemahaman kamu cukup baik, tetapi masih dapat ditingkatkan.';
-    } else {
-      message = 'Pelajari kembali materi kemudian coba quiz lagi.';
-    }
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('Hasil Quiz')),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(22),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480),
-            child: Column(
-              children: [
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.fromLTRB(22, 28, 22, 26),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Color(0xFF102F69),
-                        Color(0xFF2878FF),
-                        Color(0xFF18AFC3),
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(25),
-                    boxShadow: [
-                      BoxShadow(
-                        color: electricBlue.withValues(alpha: 0.2),
-                        blurRadius: 24,
-                        offset: const Offset(0, 12),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      TweenAnimationBuilder<double>(
-                        tween: Tween(begin: 0, end: nilai / 100),
-                        duration: const Duration(milliseconds: 850),
-                        curve: Curves.easeOutCubic,
-                        builder: (context, progress, _) => SizedBox(
-                          width: 142,
-                          height: 142,
-                          child: Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              SizedBox.expand(
-                                child: CircularProgressIndicator(
-                                  value: progress,
-                                  strokeWidth: 8,
-                                  strokeCap: StrokeCap.round,
-                                  backgroundColor: Colors.white24,
-                                  color: const Color(0xFF69E3EC),
-                                ),
-                              ),
-                              Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    '$nilai',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 43,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                  Text(
-                                    'NILAI',
-                                    style: TextStyle(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.7,
-                                      ),
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      const Text(
-                        'Quiz Selesai',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 25,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      if (difficulty != null) ...[
-                        const SizedBox(height: 6),
-                        Text(
-                          'Tingkat: ${difficulty!.label}',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.78),
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 12),
-                      Text(
-                        '$score benar dari $total soal',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (timedOut) ...[
-                  const SizedBox(height: 16),
-                  Text(
-                    'Waktu habis. Kuis telah diselesaikan otomatis.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 18),
-                Text(message, textAlign: TextAlign.center),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.arrow_back_rounded),
-                    label: const Text('Kembali'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ============================================================
 // PROFILE
 // ============================================================
 
 class ProfilePage extends StatelessWidget {
   final String userName;
   final String email;
-  final int completedMaterials;
+  final String studentClass;
+  final MaterialHistoryStore historyStore;
+  final Set<String> bookmarks;
+  final VoidCallback onBookmarkChanged;
 
   const ProfilePage({
     super.key,
     required this.userName,
     required this.email,
-    required this.completedMaterials,
+    this.studentClass = 'X TKJ/TJKT',
+    required this.historyStore,
+    required this.bookmarks,
+    required this.onBookmarkChanged,
   });
 
   void logout(BuildContext context) {
+    adminSession.clear();
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (_) => const LoginPage()),
@@ -4612,26 +3505,34 @@ class ProfilePage extends StatelessWidget {
 
                   const Divider(height: 1),
 
-                  const ListTile(
+                  ListTile(
                     leading: Icon(Icons.school),
                     title: Text('Jurusan'),
-                    subtitle: Text('Teknik Komputer dan Jaringan'),
+                    subtitle: Text(studentClass),
                   ),
 
                   const Divider(height: 1),
 
-                  ListTile(
-                    leading: const Icon(Icons.menu_book),
-                    title: const Text('Materi Dipelajari'),
-                    subtitle: Text('$completedMaterials materi'),
-                  ),
-
-                  const Divider(height: 1),
-
-                  ListTile(
-                    leading: const Icon(Icons.quiz),
-                    title: const Text('Quiz Dikerjakan'),
-                    subtitle: Text('${quizHistory.length} quiz'),
+                  AnimatedBuilder(
+                    animation: historyStore,
+                    builder: (context, _) => ListTile(
+                      leading: const Icon(Icons.menu_book),
+                      title: const Text('Riwayat Materi'),
+                      subtitle: Text(
+                        '${historyStore.entries.length} materi pernah dibaca',
+                      ),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => MaterialHistoryPage(
+                            historyStore: historyStore,
+                            bookmarks: bookmarks,
+                            onBookmarkChanged: onBookmarkChanged,
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -4665,6 +3566,54 @@ class ProfilePage extends StatelessWidget {
 // ADMIN DASHBOARD
 // ============================================================
 
+Widget buildAdminAccessDenied(BuildContext context) {
+  return Scaffold(
+    body: SafeArea(
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.lock_outline,
+                size: 48,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Akses admin diperlukan',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Masuk menggunakan akun admin untuk mengelola konten.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 20),
+              FilledButton(
+                key: const ValueKey('return-to-login'),
+                onPressed: () {
+                  adminSession.clear();
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(builder: (_) => const LoginPage()),
+                    (route) => false,
+                  );
+                },
+                child: const Text('Kembali ke login'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
 
@@ -4676,6 +3625,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
   int currentIndex = 0;
 
   void logout() {
+    adminSession.clear();
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (_) => const LoginPage()),
@@ -4685,6 +3635,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   @override
   Widget build(BuildContext context) {
+    if (!adminSession.isAuthenticated) {
+      return buildAdminAccessDenied(context);
+    }
+
     final pages = [
       buildDashboard(),
       AdminMaterialPage(
@@ -4692,7 +3646,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
           setState(() {});
         },
       ),
-      const AdminQuizPage(),
+      const AdminCategoryPage(),
       const AdminUserPage(),
     ];
 
@@ -4737,9 +3691,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
             label: 'Materi',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.quiz_outlined),
-            activeIcon: Icon(Icons.quiz),
-            label: 'Quiz',
+            icon: Icon(Icons.category_outlined),
+            activeIcon: Icon(Icons.category),
+            label: 'Kategori',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.people_outline),
@@ -4816,9 +3770,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: statCard(
-                    'Soal',
-                    quizQuestions.length.toString(),
-                    Icons.quiz,
+                    'Kategori',
+                    categoryData.length.toString(),
+                    Icons.category,
                   ),
                 ),
               ],
@@ -4838,9 +3792,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: statCard(
-                    'Hasil Quiz',
-                    quizHistory.length.toString(),
-                    Icons.assessment,
+                    'Pengguna',
+                    users.length.toString(),
+                    Icons.people,
                   ),
                 ),
               ],
@@ -4881,7 +3835,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
     final colorScheme = Theme.of(context).colorScheme;
     final accent = switch (icon) {
       Icons.menu_book => colorScheme.primary,
-      Icons.quiz => colorScheme.secondary,
       Icons.people => colorScheme.tertiary,
       _ => const Color(0xFFDF9A4D),
     };
@@ -5313,574 +4266,229 @@ class _AdminMaterialPageState extends State<AdminMaterialPage> {
   }
 }
 
-// ============================================================
-// ADMIN QUIZ
-// ============================================================
-
-class AdminQuizPage extends StatefulWidget {
-  final QuizQuestionStore? questionStore;
-
-  const AdminQuizPage({super.key, this.questionStore});
+class AdminCategoryPage extends StatefulWidget {
+  const AdminCategoryPage({super.key});
 
   @override
-  State<AdminQuizPage> createState() => _AdminQuizPageState();
+  State<AdminCategoryPage> createState() => _AdminCategoryPageState();
 }
 
-class _AdminQuizPageState extends State<AdminQuizPage> {
-  final TextEditingController _searchController = TextEditingController();
-  QuizDifficulty? _difficultyFilter;
-  bool? _activeFilter;
-
-  QuizQuestionStore get _questionStore =>
-      widget.questionStore ?? quizQuestionStore;
-
-  Future<String?> _saveQuestion(QuizQuestion question) async {
-    final result = await _questionStore.add(
-      question,
-      existingQuestions: quizQuestions,
-    );
-    if (result == QuizQuestionSaveResult.duplicateId) {
-      return 'ID soal bentrok. Silakan coba simpan kembali.';
+class _AdminCategoryPageState extends State<AdminCategoryPage> {
+  Future<bool> _saveCategories(List<String> names, {int? removedIndex}) async {
+    final previousNames = categoryData
+        .map((category) => category['name'] as String)
+        .toList();
+    final updatedMaterials = materials.map((material) {
+      final index = previousNames.indexOf(material.category);
+      if (index < 0 || index >= previousNames.length) {
+        return material.copyWith();
+      }
+      final nextIndex = removedIndex != null && index > removedIndex
+          ? index - 1
+          : index;
+      if (nextIndex >= names.length) return material.copyWith();
+      return material.copyWith(category: names[nextIndex]);
+    }).toList();
+    if (!await categoryStore.save(names.map(categoryDetails))) return false;
+    if (!await materialCatalogStore.save(updatedMaterials)) {
+      await categoryStore.save(previousNames.map(categoryDetails));
+      return false;
     }
-    if (result != QuizQuestionSaveResult.saved) {
-      return 'Soal gagal disimpan. Periksa penyimpanan lalu coba lagi.';
-    }
-
-    quizQuestions.add(question);
+    categoryData
+      ..clear()
+      ..addAll(names.map(categoryDetails));
+    materials
+      ..clear()
+      ..addAll(updatedMaterials);
     if (mounted) setState(() {});
-    return null;
+    return true;
   }
 
-  Future<void> _addQuestion() async {
-    final saved = await showDialog<bool>(
+  Future<void> _editCategory({int? index}) async {
+    final original = index == null ? '' : categoryData[index]['name'] as String;
+    final controller = TextEditingController(text: original);
+    final formKey = GlobalKey<FormState>();
+    var saving = false;
+    await showDialog<void>(
       context: context,
-      barrierDismissible: false,
-      builder: (_) => _QuizQuestionFormDialog(onSave: _saveQuestion),
-    );
-    if (saved == true && mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Soal berhasil disimpan.')));
-    }
-  }
-
-  Future<String?> _updateQuestion(QuizQuestion question) async {
-    final result = await _questionStore.update(
-      question,
-      existingQuestions: quizQuestions,
-    );
-    if (result == QuizQuestionMutationResult.notFound) {
-      return 'Soal sudah tidak ditemukan. Muat ulang daftar soal.';
-    }
-    if (result != QuizQuestionMutationResult.saved) {
-      return 'Perubahan gagal disimpan. Periksa penyimpanan lalu coba lagi.';
-    }
-
-    final index = quizQuestions.indexWhere((item) => item.id == question.id);
-    if (index != -1) quizQuestions[index] = question;
-    if (mounted) setState(() {});
-    return null;
-  }
-
-  Future<void> _editQuestion(QuizQuestion question) async {
-    final saved = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => _QuizQuestionFormDialog(
-        initialQuestion: question,
-        onSave: _updateQuestion,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(index == null ? 'Tambah Kategori' : 'Edit Kategori'),
+          content: Form(
+            key: formKey,
+            child: TextFormField(
+              controller: controller,
+              autofocus: true,
+              maxLength: 48,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(labelText: 'Nama kategori'),
+              validator: (value) {
+                final name = value?.trim() ?? '';
+                if (name.isEmpty) return 'Nama kategori wajib diisi.';
+                if (categoryData.any(
+                  (item) =>
+                      item['name'] != original &&
+                      (item['name'] as String).toLowerCase() ==
+                          name.toLowerCase(),
+                )) {
+                  return 'Kategori tersebut sudah ada.';
+                }
+                return null;
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: saving ? null : () => Navigator.pop(dialogContext),
+              child: const Text('Batal'),
+            ),
+            FilledButton(
+              onPressed: saving
+                  ? null
+                  : () async {
+                      if (!(formKey.currentState?.validate() ?? false)) return;
+                      setDialogState(() => saving = true);
+                      final names = categoryData
+                          .map((item) => item['name'] as String)
+                          .toList();
+                      if (index == null) {
+                        names.add(controller.text.trim());
+                      } else {
+                        names[index] = controller.text.trim();
+                      }
+                      if (!await _saveCategories(names)) {
+                        if (!dialogContext.mounted) return;
+                        setDialogState(() => saving = false);
+                        ScaffoldMessenger.of(dialogContext).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Kategori gagal disimpan. Periksa penyimpanan lalu coba lagi.',
+                            ),
+                          ),
+                        );
+                        return;
+                      }
+                      if (dialogContext.mounted) Navigator.pop(dialogContext);
+                    },
+              child: saving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Simpan'),
+            ),
+          ],
+        ),
       ),
     );
-    if (saved == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Perubahan soal berhasil disimpan.')),
-      );
-    }
+    controller.dispose();
   }
 
-  Future<void> _deactivateQuestion(QuizQuestion question) async {
-    final shouldDelete = await showDialog<bool>(
+  Future<void> _deleteCategory(int index) async {
+    final category = categoryData[index]['name'] as String;
+    final usesCategory = materials.any(
+      (material) => material.category == category,
+    );
+    if (usesCategory) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Kategori masih digunakan materi. Pindahkan materi terlebih dahulu.',
+          ),
+        ),
+      );
+      return;
+    }
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Hapus Soal Kuis?'),
-        content: const Text(
-          'Apakah Anda yakin ingin menghapus soal ini? '
-          'Soal yang dihapus tidak akan tersedia lagi untuk kuis berikutnya.',
-        ),
+        title: const Text('Hapus Kategori'),
+        content: Text('Hapus kategori "$category"?'),
         actions: [
           TextButton(
-            key: ValueKey('cancel-delete-quiz-${question.id}'),
             onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text('Batal'),
           ),
           FilledButton(
-            key: ValueKey('confirm-delete-quiz-${question.id}'),
             onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('Hapus'),
           ),
         ],
       ),
     );
-    if (shouldDelete != true || !mounted) return;
-
-    setState(() => _deletingIds.add(question.id));
-    final result = await _questionStore.deactivate(
-      question.id,
-      existingQuestions: quizQuestions,
-    );
-    if (!mounted) return;
-    _deletingIds.remove(question.id);
-    if (result == QuizQuestionMutationResult.saved) {
-      final index = quizQuestions.indexWhere((item) => item.id == question.id);
-      if (index != -1) {
-        quizQuestions[index] = quizQuestions[index].copyWith(isActive: false);
-      }
-      setState(() {});
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Soal dinonaktifkan untuk kuis berikutnya.'),
-        ),
-      );
-      return;
+    if (confirmed != true || !mounted) return;
+    final names = categoryData.map((item) => item['name'] as String).toList()
+      ..removeAt(index);
+    if (!await _saveCategories(names, removedIndex: index) && mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Kategori gagal dihapus.')));
     }
-    setState(() {});
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          result == QuizQuestionMutationResult.notFound
-              ? 'Soal sudah tidak ditemukan.'
-              : 'Soal gagal dihapus. Periksa penyimpanan lalu coba lagi.',
-        ),
-      ),
-    );
-  }
-
-  final Set<String> _deletingIds = <String>{};
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) {
-    final query = _searchController.text.trim().toLowerCase();
-    final filteredQuestions = quizQuestions.where((question) {
-      final matchesQuery =
-          query.isEmpty ||
-          question.question.toLowerCase().contains(query) ||
-          question.category.toLowerCase().contains(query);
-      final matchesDifficulty =
-          _difficultyFilter == null || question.difficulty == _difficultyFilter;
-      final matchesStatus =
-          _activeFilter == null || question.isActive == _activeFilter;
-      return matchesQuery && matchesDifficulty && matchesStatus;
-    }).toList();
-
-    return Scaffold(
-      body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 6),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Kelola Soal Kuis',
-                      style: Theme.of(context).textTheme.headlineSmall
-                          ?.copyWith(fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                  FilledButton.icon(
-                    key: const ValueKey('add-quiz-question'),
-                    onPressed: _addQuestion,
-                    icon: const Icon(Icons.add),
-                    label: const Text('Tambah Soal'),
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Text(
-                '${quizQuestions.length} soal dalam bank kuis',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+  Widget build(BuildContext context) => SafeArea(
+    child: Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 25, 20, 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Kelola Kategori',
+                  style: Theme.of(context).textTheme.headlineSmall,
                 ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-              child: TextField(
-                key: const ValueKey('quiz-question-search'),
-                controller: _searchController,
-                onChanged: (_) => setState(() {}),
-                decoration: inputDecoration(
-                  'Cari pertanyaan atau kategori...',
-                  Icons.search,
-                ),
+              FilledButton.icon(
+                onPressed: () => _editCategory(),
+                icon: const Icon(Icons.add),
+                label: const Text('Tambah'),
               ),
-            ),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
-                children: [
-                  ChoiceChip(
-                    label: const Text('Semua tingkat'),
-                    selected: _difficultyFilter == null,
-                    onSelected: (_) => setState(() => _difficultyFilter = null),
-                  ),
-                  for (final difficulty in QuizDifficulty.values) ...[
-                    const SizedBox(width: 8),
-                    ChoiceChip(
-                      label: Text(difficulty.label),
-                      selected: _difficultyFilter == difficulty,
-                      onSelected: (_) =>
-                          setState(() => _difficultyFilter = difficulty),
-                    ),
-                  ],
-                  const SizedBox(width: 16),
-                  ChoiceChip(
-                    label: const Text('Semua status'),
-                    selected: _activeFilter == null,
-                    onSelected: (_) => setState(() => _activeFilter = null),
-                  ),
-                  const SizedBox(width: 8),
-                  ChoiceChip(
-                    label: const Text('Aktif'),
-                    selected: _activeFilter == true,
-                    onSelected: (_) => setState(() => _activeFilter = true),
-                  ),
-                  const SizedBox(width: 8),
-                  ChoiceChip(
-                    label: const Text('Nonaktif'),
-                    selected: _activeFilter == false,
-                    onSelected: (_) => setState(() => _activeFilter = false),
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-              child: Text(
-                '${filteredQuestions.length} soal ditampilkan',
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-            Expanded(
-              child: quizQuestions.isEmpty
-                  ? const Center(
-                      child: Text(
-                        'Belum ada soal kuis. Tambahkan soal pertama untuk memulai.',
-                      ),
-                    )
-                  : filteredQuestions.isEmpty
-                  ? const Center(child: Text('Soal tidak ditemukan.'))
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(20),
-                      itemCount: filteredQuestions.length,
-                      itemBuilder: (context, index) {
-                        final question = filteredQuestions[index];
-                        final colorScheme = Theme.of(context).colorScheme;
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 10),
-                          child: ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: colorScheme.primaryContainer,
-                              child: Text(
-                                '${index + 1}',
-                                style: TextStyle(color: colorScheme.primary),
-                              ),
-                            ),
-                            title: Text(question.question),
-                            subtitle: Text(
-                              '${question.category} · ${question.difficulty.label} · '
-                              'Pilihan ganda · ${question.isActive ? 'Aktif' : 'Nonaktif'}',
-                            ),
-                            trailing: Wrap(
-                              children: [
-                                IconButton(
-                                  key: ValueKey('edit-quiz-${question.id}'),
-                                  tooltip: 'Edit soal',
-                                  onPressed: _deletingIds.contains(question.id)
-                                      ? null
-                                      : () => _editQuestion(question),
-                                  icon: const Icon(Icons.edit_outlined),
-                                ),
-                                IconButton(
-                                  key: ValueKey('delete-quiz-${question.id}'),
-                                  tooltip: 'Hapus soal',
-                                  onPressed:
-                                      !question.isActive ||
-                                          _deletingIds.contains(question.id)
-                                      ? null
-                                      : () => _deactivateQuestion(question),
-                                  icon: _deletingIds.contains(question.id)
-                                      ? const SizedBox(
-                                          width: 20,
-                                          height: 20,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                          ),
-                                        )
-                                      : const Icon(Icons.delete_outline),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _QuizQuestionFormDialog extends StatefulWidget {
-  final Future<String?> Function(QuizQuestion question) onSave;
-  final QuizQuestion? initialQuestion;
-
-  const _QuizQuestionFormDialog({required this.onSave, this.initialQuestion});
-
-  @override
-  State<_QuizQuestionFormDialog> createState() =>
-      _QuizQuestionFormDialogState();
-}
-
-class _QuizQuestionFormDialogState extends State<_QuizQuestionFormDialog> {
-  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
-  late final List<String> _options;
-  late String _question;
-  late String _explanation;
-  late String _category;
-  late QuizDifficulty _difficulty;
-  late int _correctAnswer;
-  late bool _isActive;
-  bool _isSaving = false;
-  String? _saveError;
-
-  @override
-  void initState() {
-    super.initState();
-    final initialQuestion = widget.initialQuestion;
-    _options = initialQuestion == null
-        ? List.filled(4, '')
-        : List<String>.of(initialQuestion.options);
-    _question = initialQuestion?.question ?? '';
-    _explanation = initialQuestion?.explanation ?? '';
-    _category =
-        initialQuestion?.category ?? categoryData.first['name'] as String;
-    _difficulty = initialQuestion?.difficulty ?? QuizDifficulty.easy;
-    _correctAnswer = initialQuestion?.correctAnswer ?? 0;
-    _isActive = initialQuestion?.isActive ?? true;
-  }
-
-  Future<void> _submit() async {
-    if (_isSaving || !(_formKey.currentState?.validate() ?? false)) return;
-    setState(() {
-      _isSaving = true;
-      _saveError = null;
-    });
-
-    final question = QuizQuestion(
-      id: widget.initialQuestion?.id ?? newQuizQuestionId(),
-      question: _question.trim(),
-      options: _options.map((option) => option.trim()).toList(),
-      correctAnswer: _correctAnswer,
-      difficulty: _difficulty,
-      category: _category,
-      explanation: _explanation.trim(),
-      isActive: _isActive,
-    );
-    final error = await widget.onSave(question);
-    if (!mounted) return;
-    if (error != null) {
-      setState(() {
-        _isSaving = false;
-        _saveError = error;
-      });
-      return;
-    }
-    Navigator.pop(context, true);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return AlertDialog(
-      title: Text(widget.initialQuestion == null ? 'Tambah Soal' : 'Edit Soal'),
-      content: SizedBox(
-        width: 520,
-        child: SingleChildScrollView(
-          child: Form(
-            key: _formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  key: const ValueKey('quiz-question-field'),
-                  initialValue: _question,
-                  onChanged: (value) => _question = value,
-                  textCapitalization: TextCapitalization.sentences,
-                  maxLines: 3,
-                  decoration: const InputDecoration(labelText: 'Pertanyaan'),
-                  validator: (value) => value == null || value.trim().isEmpty
-                      ? 'Pertanyaan wajib diisi.'
-                      : null,
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  key: const ValueKey('quiz-category-field'),
-                  initialValue: _category,
-                  decoration: const InputDecoration(
-                    labelText: 'Kategori materi',
-                  ),
-                  items: categoryData
-                      .map(
-                        (item) => DropdownMenuItem<String>(
-                          value: item['name'] as String,
-                          child: Text(item['name'] as String),
-                        ),
-                      )
-                      .toList(),
-                  validator: (value) => value == null || value.isEmpty
-                      ? 'Kategori materi wajib dipilih.'
-                      : null,
-                  onChanged: _isSaving
-                      ? null
-                      : (value) {
-                          if (value != null) setState(() => _category = value);
-                        },
-                ),
-                DropdownButtonFormField<QuizDifficulty>(
-                  key: const ValueKey('quiz-difficulty-field'),
-                  initialValue: _difficulty,
-                  decoration: const InputDecoration(
-                    labelText: 'Tingkat kesulitan',
-                  ),
-                  items: QuizDifficulty.values
-                      .map(
-                        (difficulty) => DropdownMenuItem(
-                          value: difficulty,
-                          child: Text(difficulty.label),
-                        ),
-                      )
-                      .toList(),
-                  validator: (value) =>
-                      value == null ? 'Tingkat kesulitan wajib dipilih.' : null,
-                  onChanged: _isSaving
-                      ? null
-                      : (value) {
-                          if (value != null) {
-                            setState(() => _difficulty = value);
-                          }
-                        },
-                ),
-                const ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.radio_button_checked),
-                  title: Text('Jenis soal'),
-                  subtitle: Text('Pilihan ganda, satu jawaban benar'),
-                ),
-                for (var index = 0; index < _options.length; index++)
-                  TextFormField(
-                    key: ValueKey('quiz-option-$index'),
-                    initialValue: _options[index],
-                    onChanged: (value) => _options[index] = value,
-                    enabled: !_isSaving,
-                    textCapitalization: TextCapitalization.sentences,
-                    decoration: InputDecoration(
-                      labelText: 'Pilihan ${String.fromCharCode(65 + index)}',
-                    ),
-                    validator: (value) => value == null || value.trim().isEmpty
-                        ? 'Semua pilihan jawaban wajib diisi.'
-                        : null,
-                  ),
-                DropdownButtonFormField<int>(
-                  key: const ValueKey('quiz-correct-answer-field'),
-                  initialValue: _correctAnswer,
-                  decoration: const InputDecoration(labelText: 'Kunci jawaban'),
-                  items: List.generate(
-                    _options.length,
-                    (index) => DropdownMenuItem(
-                      value: index,
-                      child: Text('Pilihan ${String.fromCharCode(65 + index)}'),
-                    ),
-                  ),
-                  onChanged: _isSaving
-                      ? null
-                      : (value) {
-                          if (value != null) {
-                            setState(() => _correctAnswer = value);
-                          }
-                        },
-                ),
-                TextFormField(
-                  key: const ValueKey('quiz-explanation-field'),
-                  initialValue: _explanation,
-                  onChanged: (value) => _explanation = value,
-                  enabled: !_isSaving,
-                  maxLines: 3,
-                  textCapitalization: TextCapitalization.sentences,
-                  decoration: const InputDecoration(
-                    labelText: 'Pembahasan (opsional)',
-                  ),
-                ),
-                SwitchListTile(
-                  key: const ValueKey('quiz-active-switch'),
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Soal aktif'),
-                  value: _isActive,
-                  onChanged: _isSaving
-                      ? null
-                      : (value) => setState(() => _isActive = value),
-                ),
-                if (_saveError != null)
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      _saveError!,
-                      style: TextStyle(color: colorScheme.error),
-                    ),
-                  ),
-              ],
-            ),
+            ],
           ),
         ),
-      ),
-      actions: [
-        TextButton(
-          key: const ValueKey('cancel-quiz-question'),
-          onPressed: _isSaving ? null : () => Navigator.pop(context, false),
-          child: const Text('Batal'),
-        ),
-        FilledButton(
-          key: const ValueKey('save-quiz-question'),
-          onPressed: _isSaving ? null : _submit,
-          child: _isSaving
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : Text(
-                  widget.initialQuestion == null
-                      ? 'Simpan Soal'
-                      : 'Simpan Perubahan',
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: categoryData.length,
+            itemBuilder: (context, index) {
+              final item = categoryData[index];
+              final name = item['name'] as String;
+              final count = materials
+                  .where((material) => material.category == name)
+                  .length;
+              return Card(
+                child: ListTile(
+                  leading: Icon(
+                    item['icon'] as IconData,
+                    color: item['accent'] as Color,
+                  ),
+                  title: Text(name),
+                  subtitle: Text('$count materi'),
+                  trailing: Wrap(
+                    children: [
+                      IconButton(
+                        tooltip: 'Edit kategori $name',
+                        onPressed: () => _editCategory(index: index),
+                        icon: const Icon(Icons.edit_outlined),
+                      ),
+                      IconButton(
+                        tooltip: 'Hapus kategori $name',
+                        onPressed: () => _deleteCategory(index),
+                        icon: const Icon(Icons.delete_outline),
+                      ),
+                    ],
+                  ),
                 ),
+              );
+            },
+          ),
         ),
       ],
-    );
-  }
+    ),
+  );
 }
 
 // ============================================================

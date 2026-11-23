@@ -1,17 +1,38 @@
-# flutter_application_1
+# TechExplorer
 
-A new Flutter project.
+TechExplorer adalah kamus digital pembelajaran dasar komputer untuk siswa kelas
+X SMK jurusan TKJ/TJKT. Siswa dapat menjelajahi materi berdasarkan kategori,
+mencari istilah, menyimpan bookmark, membaca materi lengkap, dan membuka
+riwayat bacaan.
 
-## Getting Started
+## Kategori pembelajaran
 
-This project is a starting point for a Flutter application.
+- Pengenalan Komputer
+- Hardware (Perangkat Keras)
+- Software (Perangkat Lunak)
+- Sistem Operasi
+- Perangkat Input dan Output
+- Dasar Jaringan Komputer
+- Perangkat Jaringan
+- Istilah-Istilah Komputer
 
-A few resources to get you started if this is your first Flutter project:
+## Akun demo
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+- Siswa: `siswa@gmail.com` / `123456` (kelas X TKJ 1)
+- Admin: `admin@gmail.com` / `admin123`
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Siswa baru dapat mendaftar dengan kelas X TKJ/TJKT. Admin dapat mengelola
+materi dan kategori dari dashboard.
+
+## Penyimpanan
+
+Akun siswa, materi, kategori, bookmark, preferensi tema, dan riwayat materi
+disimpan secara lokal agar tersedia kembali setelah aplikasi dibuka ulang.
+
+## Menjalankan aplikasi
+
+```sh
+flutter pub get
+flutter run
+flutter test
+```
